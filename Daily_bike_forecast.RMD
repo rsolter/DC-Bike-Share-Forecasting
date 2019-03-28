@@ -1,0 +1,446 @@
+---
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.width = 9)
+
+# Libraries
+  library(tidyverse)
+  library(prophet)
+  library(scales)
+
+# Loading cleaned bike data from Sept, 2010 - Oct, 2018 
+  # source: (https://s3.amazonaws.com/capitalbikeshare-data/index.html)
+  load(file="bike_trips.rdata")
+  bike_trips <- bike_trips[1:2920, ] # subsetting down to exactly 8 years worth of data (365*8)
+
+  
+# Some resources:
+
+  # https://robjhyndman.com/hyndsight/longseasonality/
+  # https://stats.stackexchange.com/questions/185056/adjusting-daily-time-series-data-for-the-seasonal-component
+  # https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
+  # https://pythondata.com/forecasting-time-series-data-with-prophet-part-1/
+  # https://pythondata.com/forecasting-time-series-data-with-prophet-part-2/
+  # https://facebook.github.io/prophet/docs/quick_start.html#r-api
+  # https://www.analyticsvidhya.com/blog/2018/05/generate-accurate-forecasts-facebook-prophet-python-r/ 
+  
+  
+  
+  
+```
+
+
+### Predicting Daily DC Bike Share Ridership with **prophet**
+
+This markdown documents multiple attempts to forecast daily ridership of the DC Bike Share program using Facebook's forecasting package [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api). Data was gathered from the official DC Bike Share [site](https://s3.amazonaws.com/capitalbikeshare-data/index.html) and spans daily bike trips logged from Sept 15th, 2010 to Sept 30th, 2018.  
+
+
+
+****
+
+### Visualization 
+
+
+A few takeaways:
+
+
+- Unsurprisingly, the series exhibits clear seasonality, with more trips taking place during the summer months and fewer during the winter. From this plot, it's unclear if a weekly seasonality exists.
+
+- There are also a number of outliers apparent in the data. Most of these outliers are registering below the curve, and are less than expected, possibly due to bad weather on those particular days. There also appear to be a few positive outliers in the first quarter of the year and could relate to a seasonal event such as the arrival of the cherry blossoms. 
+
+- Given that the size of the seasonal fluctuations grow over time, a multiplicative model may be best for modeling this series. 
+
+- Similarly, over time the trend appears to frow less and less, indicating a model incorporating a logistic trend may be most appropriate. Ostensibly, this growth is down to the [expansion](https://en.wikipedia.org/wiki/Capital_Bikeshare#Expansion) in the number of bike stations and bikes over the last ~10 years. 
+
+
+```{r viz}
+# Visualzing time series
+ggplot(bike_trips, aes(x=Date, y=n)) + 
+  geom_line() + 
+  theme_minimal() + 
+  ggtitle("Daily Ridership") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("") + ylab("") +
+  scale_y_continuous(label=comma) +
+  scale_x_date(breaks = "1 year",date_labels = "%Y")
+
+
+# Histogram of Daily Ride Totals
+ride_hist <- ggplot(bike_trips, aes(x=n)) + 
+  geom_histogram(binwidth = 150) +
+  theme_minimal() +
+  ggtitle("Daily Counts of DC Bike Share Rides") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("") + ylab("") +
+  scale_x_continuous(label=comma)
+```
+
+
+
+
+****
+
+### Removing Outliers
+
+Since there appear to be multiple outliers in the dataset and the prophet package can handle missing data points, we'll remove some outliers before proceeding to modeling the data.
+
+
+_Identifying and processing outliers_
+
+One way to identify outliers is to use [moving-median decomposition](https://anomaly.io/anomaly-detection-moving-median-decomposition/). In the case below, a two-week-long running median trend is subtracted from the original series. Next, observations which fall outside of 4 standard deviations of that running median trend are isolated and removed from the series for future modeling. 
+
+```{r Handing Outliers in Test Set, echo=F, message=F, warning=F}
+
+### Using moving median
+# https://anomaly.io/anomaly-detection-moving-median-decomposition/
+  
+trend <- runmed(bike_trips$n,14) # calcluating running median trend over a period of 7 obs
+#plot(as.ts(trend)) 
+
+
+# Decomposing 
+detrend <- bike_trips$n/as.vector(trend) # subtracting median trend from the original obs
+m <- t(matrix(data = detrend, nrow = 14)) # 
+seasonal <- colMeans(m, na.rm = T)
+random <- bike_trips$n/(trend * seasonal)
+rm_random <- runmed(random[!is.na(random)], 3)
+ 
+# Using the normal distribution to detect outliers in the noise
+min <- mean(rm_random, na.rm = T) - 4*sd(rm_random, na.rm = T)
+max <- mean(rm_random, na.rm = T) + 4*sd(rm_random, na.rm = T)
+plot(as.ts(random), main="Observations falling outside 4 SD")
+abline(h=max, col="#e15f3f", lwd=2)
+abline(h=min, col="#e15f3f", lwd=2)
+
+
+# Plotting Anomolies in the actual original time series
+position <- data.frame(id=seq(1, length(random)), value=random)
+anomalyH <-position[position$value > max, ]
+anomalyH <- anomalyH[!is.na(anomalyH$value), ]
+anomalyL <- position[position$value < min, ]
+anomalyL <- anomalyL[!is.na(anomalyL$value), ]
+anomaly <- data.frame(id=c(anomalyH$id, anomalyL$id),
+ value=c(anomalyH$value, anomalyL$value))
+
+points(x=anomaly$id, y=anomaly$value, col="#e15f3f")
+ 
+plot(as.ts(bike_trips$n), main="Original Series - with observations falling outside 4 SD marked")
+real <- data.frame(id=seq(1, length(bike_trips$n)), value=bike_trips$n)
+realAnomaly <- real[anomaly$id, ]
+points(x = realAnomaly$id, y =realAnomaly$value, col="#e15f3f")
+
+```
+
+
+```{r Removing Outliers}
+
+bike_trips_clean <- bike_trips[-realAnomaly$id, ]
+
+# This lowers the maximum values found in the series
+# max(bike_trips$n) # 19113
+# max(bike_trips_clean$n) # 17066
+
+
+
+```
+
+
+
+****
+
+### First Prophet model
+
+
+Due to the complexity inherent in daily forecasting, the modeling will be done with Facebook's semi-automated [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api) package which can account for multiple seasonalities.
+
+
+```{r Processing and Partitioning}
+
+# Change column names for propet package
+prophet_btrips <- bike_trips_clean
+colnames(prophet_btrips) <- c("ds","y")
+
+# Paritioning
+train <- prophet_btrips %>% filter(ds<'2016-09-01') # 2173 records
+test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
+
+```
+
+****
+
+First Prophet Prediction
+
+```{r Prophet Forecast 1, echo=TRUE, message=F, warning=F}
+# https://facebook.github.io/prophet/docs/quick_start.html#r-api
+
+## Prophet Forecast 1
+
+  # Training 
+  prophetFit1 <- prophet(train,
+                         yearly.seasonality = T,
+                         weekly.seasonality = T,
+                         daily.seasonality = F)
+  
+  # Creating dataframe for future forecast
+  future <- make_future_dataframe(prophetFit1, periods = nrow(test))
+
+  # Predicting
+  prophetForecast1 <- predict(prophetFit1, future)
+  
+  # The resulting prophetForecast1 dataframe contains columns for predictions, trend data, and uncertainty intervals 
+
+  # Visualizing ts components - trend, weekly and yearly seasonalities
+  prophet_plot_components(prophetFit1, prophetForecast1)
+    
+  # Visualize forecast
+  plot(prophetFit1, prophetForecast1)
+  
+    
+```
+
+
+Using a dynamic visualiztion, we can zoom in on the series daily observations and see how much volatility exists on a day-to-day basis. We also can see locate extremely large observations during the second week of April in 2014 and 2015.
+
+```{r Dynamic Viz 1}
+  # Dynamic Plot of forecast
+  dyplot.prophet(prophetFit1, prophetForecast1)  
+
+```
+
+
+
+Evaluation of the first prediction:
+
+```{r}
+
+  # Calculating Fit
+  Fit <- test
+  Fit$y_hat <- tail(prophetForecast1$yhat,nrow(test))
+  Fit$resid <- Fit$y-Fit$y_hat
+  Fit$resid_perc <- (Fit$resid/Fit$y)*100
+  
+  error_summary <-summary(Fit$resid_perc)
+  
+  
+  # Results
+  error_summary # A summary of the errors as percentages
+  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) # A plot of the error distribution
+
+```
+
+
+****
+
+### Second Prophet model
+
+
+
+Given that the overal trend appears to be leveling off, we'll try a second modeling approach with a logistic growth specified and a carrying capacity.
+
+A _carry capacity_ refers to the maxium possible value for the series. In this case, we'll set it at 17500
+
+
+
+```{r Prophet Forecast 1a, echo=TRUE, message=F, warning=F}
+# https://facebook.github.io/prophet/docs/quick_start.html#r-api
+
+## Prophet Forecast 1
+
+  # Training 
+
+  train$cap <- 17500  
+
+  prophetFit1 <- prophet(train,
+                         yearly.seasonality = T,
+                         weekly.seasonality = T,
+                         daily.seasonality = F,
+                         growth = "logistic")
+  
+  # Creating dataframe for future forecast
+  future <- make_future_dataframe(prophetFit1, periods = nrow(test))
+  future$cap <- 17500
+
+  
+  # Predicting
+  prophetForecast1 <- predict(prophetFit1, future)
+  
+  # The resulting prophetForecast1 dataframe contains columns for predictions, trend data, and uncertainty intervals 
+
+  # Visualizing ts components - trend, weekly and yearly seasonalities
+  prophet_plot_components(prophetFit1, prophetForecast1)
+    
+  # Visualize forecast
+  plot(prophetFit1, prophetForecast1)
+  
+  # Dynamic Plot of forecast
+  dyplot.prophet(prophetFit1, prophetForecast1)  
+    
+```
+
+Evaluation of the second prediction:
+
+```{r}
+
+  # Calculating Fit
+  Fit <- test
+  Fit$y_hat <- tail(prophetForecast1$yhat,nrow(test))
+  Fit$resid <- Fit$y-Fit$y_hat
+  Fit$resid_perc <- (Fit$resid/Fit$y)*100
+  
+  error_summary <-summary(Fit$resid_perc)
+  
+  
+  # Results
+  error_summary # A summary of the errors as percentages
+  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) # A plot of the error distribution
+
+```
+
+
+
+
+
+
+****
+
+```{r Prophet Forecast 2 Log, eval=F}
+
+# 3rd Prophet prediction with Log transformation
+
+  ## The log transform results in slightly lower MAE rate
+  
+  # Transform 
+  log_train <- train
+  log_train$y <- log(log_train$y)
+  
+  
+  # Trainging
+  m_log <- prophet(log_train)
+  
+  # Creating dataframe for log forecast
+  future_log <- make_future_dataframe(m_log, periods = nrow(test))
+  
+  # Predicting
+  forecast_log <- predict(m_log, future_log)
+
+  # Visualize forecast
+  plot(m_log, forecast_log)
+
+  
+  # Visualizing ts components - trend, weekly and yearly seasonalities
+  prophet_plot_components(m_log, forecast_log)
+
+  
+  # Function for back transform of log
+  log_back <- function(y){
+    e <- exp(1)
+    return(e^y)
+  }
+  
+  
+  # Calculating Fit 
+  Log_Fit <- test
+  Log_Fit$y_hat_log <- tail(forecast_log$yhat,nrow(Log_Fit))
+  Log_Fit$y_hat <- log_back(Log_Fit$y_hat_log)
+
+  Log_Fit$resid <- Log_Fit$y-Log_Fit$y_hat
+  Log_Fit$resid_perc <- (Log_Fit$resid/Log_Fit$y)*100
+  
+  log_error_summary <-summary(Log_Fit$resid_perc)
+
+
+  # Vizualizing Errors
+  ggplot(Log_Fit,aes(resid_perc)) + geom_histogram(binwidth = 10)
+
+
+
+```
+
+****
+
+
+```{r Prophet Forecast 3 Tuning Parameters, eval=F}
+
+# 4th Prophet prediction with tuning parameters
+  
+  
+  # Search grid
+  prophetGrid <- expand.grid(changepoint_prior_scale = c(0.05, 0.5, 0.001),
+                             seasonality_prior_scale = c(100, 10, 1),
+                             #holidays_prior_scale = c(100, 10, 1),
+                             capacity = c(14000, 14500, 15000, 16000), # Setting maximum values # https://facebook.github.io/prophet/docs/saturating_forecasts.html
+                             growth = 'logistic')
+  
+  # The Model
+  results <- vector(mode = 'numeric', length = nrow(prophetGrid))
+  
+  # Search best parameters
+  for (i in seq_len(nrow(prophetGrid))) {
+    parameters <- prophetGrid[i, ]
+    if (parameters$growth == 'logistic') {train$cap <- parameters$capacity}
+    
+    m <- prophet(train, growth = parameters$growth, 
+                 #holidays = holidays,
+                 seasonality.prior.scale = parameters$seasonality_prior_scale, 
+                 changepoint.prior.scale = parameters$changepoint_prior_scale)
+                #,holidays.prior.scale = parameters$holidays_prior_scale)
+    
+    future <- make_future_dataframe(m, periods = nrow(valid))
+    if (parameters$growth == 'logistic') {future$cap <- parameters$capacity}
+    
+    # NOTE: There's a problem in function names with library(caret)
+    forecast <- predict(m, future)
+    
+    forecast_tail <- tail(forecast,nrow(valid))
+    
+    #results[i] <- forecast::accuracy(forecast[forecast$ds %in% valid$ds, 'yhat'], valid$y)[ , 'MAE']
+    
+    results[i] <- forecast::accuracy(forecast_tail$yhat, valid$y)[ , 'MAE']
+    
+  }
+  
+  prophetGrid <- cbind(prophetGrid, results)
+  best_params <- prophetGrid[prophetGrid$results == min(results), ]
+  
+
+  
+  # Retrain using train and validation set
+  retrain <- bind_rows(train, valid)
+  retrain$cap <- best_params$capacity
+  m <- prophet(retrain, growth = best_params$growth,
+               #holidays = holidays,
+               seasonality.prior.scale = best_params$seasonality_prior_scale,
+               changepoint.prior.scale = best_params$changepoint_prior_scale)
+               #,holidays.prior.scale = best_params$holidays_prior_scale)
+  
+  future <- make_future_dataframe(m, periods = 184)
+  future$cap <- best_params$capacity
+  
+  forecast <- predict(m, future)
+
+  
+  # Final plot
+  p <- ggplot()
+  p <- p + geom_point(data = train, aes(x = ds, y = y), size = 0.5)
+  p <- p + geom_line(data = forecast, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
+  p <- p + geom_ribbon(data = forecast, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.3)
+  p <- p + geom_point(data = valid, aes(x = ds, y = y), size = 0.5, color = '#4daf4a')
+  p <- p + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = 'red')
+  p  
+```
+
+
+
+***
+
+### Next Steps
+
+- Make use of prophet's holiday feature which allows for certain observations to be marked as influential in establishing change points in the trend.
+
+- Tuning the parameters related to the flexibility that we want to give the model to fit change points, seasonality and holidays. 
+
+
+
+
