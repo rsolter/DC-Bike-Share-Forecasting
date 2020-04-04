@@ -20,11 +20,8 @@
 # Set Up ----
 
 
-library(dplyr)
+library(tidyverse)
 library(prophet)
-library(ggplot2)
-library(tidyr)
-library(stringr)
 library(lubridate)
 
 
