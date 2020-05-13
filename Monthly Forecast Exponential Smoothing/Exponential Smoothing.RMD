@@ -1,0 +1,155 @@
+---
+output: 
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# Libraries
+  library(tidyverse)
+  library(lubridate)
+  library(scales)
+  library(forecast)
+  library(tseries)
+  library(TSstudio)
+  library(knitr)
+
+
+
+# Loading cleaned bike data from Oct, 2010 - Aug, 2018 
+  # source: (https://s3.amazonaws.com/capitalbikeshare-data/index.html)
+
+load(file="/home/ravisolter/Personal Git/DC-Bike-Share-Forecasting/bike_trips.rdata")
+monthly_bike_trips <- bike_trips %>% filter(Date>="2010-10-01") %>% filter(Date<"2018-09-01")
+  
+monthly_bike_trips <- monthly_bike_trips %>%
+    mutate(Year=lubridate::year(Date),
+           Month=lubridate::month(Date)) %>%
+    group_by(Year,Month) %>%
+    summarise(Monthly_Trips=sum(n,na.rm=T))
+
+ts_month <- ts(monthly_bike_trips$Monthly_Trips,
+                  start=c(2010,10), end=c(2018,8), 
+                  frequency = 12)
+  
+```
+
+
+One of the fundamental methods for forecasting univariate series is [exponential smoothing](https://en.wikipedia.org/wiki/Exponential_smoothing). The basic idea behind the method is that forecasts are produced using a weighted average of past observations. Furthermore, the weights applied to the past observations decay exponentially as the observations get older, with more recent observations receiving greater weight. This post will examine applying this method to predict monthly ridership on the Capital BikeShare program.
+
+
+
+**Partition**
+
+To test the accuracy of the predictions, we will split the data stored in `ts_month` using the `TSstudio` package into `test` and `train` objects. The test period is set to be the final 12 observations, or one year.
+
+
+```{r partition, echo=TRUE}
+ts_month
+ts_month_partition <- TSstudio::ts_split(ts_month,sample.out = 12)
+train <- ts_month_partition$train
+test <- ts_month_partition$test
+```
+
+**Holt-Winters Modeling**
+
+```{r viz}
+autoplot(ts_month) +
+  xlab(" ") + ylab("") + scale_y_continuous(label=comma) +
+  ggtitle("Monthly Bike Rentals") + theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Given both the clear seasonality and growing trend in the series, we'll use the Holt-Winters method (sometimes known as the Triple Exponential Smoothing) which will capture both factors. Specifically, the Holt-Winters uses three separate smoothing factors to compose the forecast; one for the level (alpha), another for trend (beta), and a final for the seasonal component (gamma). 
+
+Furthermore, given that the size of the seasonal swings in ridership are not constant and have grown from ~100k in 2012 to over +200k in 2017 and 2018, it makes sense to try a multiplicative method as well as additive. Read more about the methodology [here](https://otexts.com/fpp2/holt-winters.html).
+
+```{r holt-winters, echo=TRUE}
+add_fit <- hw(train,seasonal="additive",h = 12)
+mult_fit <- hw(train,seasonal="multiplicative",h = 12)
+autoplot(ts_month) +
+  autolayer(add_fit, series="HW additive forecasts", PI=FALSE) +
+  autolayer(mult_fit, series="HW multiplicative forecasts",
+    PI=FALSE) +
+  scale_y_continuous(label=comma) + theme_minimal() +
+  xlab(" ") +
+  ylab("") +
+  ggtitle("Holt-Winters Forecasts for Monthly Bike Rentals") +
+  guides(colour=guide_legend(title="Forecast")) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+It certainly appears that the multiplicative model does a better job than the additive one in estimating the ridership, at least until the final few months of the predictive window at which point the two estimates are quite similar.
+
+We can confirm this by looking at the errors on a monthly basis. Over the 12 months, the mean absolute percent error for the additive model is 23.9% while the multiplicative method is closer at 10.6%.
+
+```{r holt-winters evaluation}
+add_forecast <- add_fit$mean
+mult_forecast <- mult_fit$mean
+actual <- test
+
+Performance <- data.frame(Actual=actual,
+           "Add-Forecast"=add_forecast,
+           "Add-Error-Abs"=add_forecast-actual,
+           "Add-Error-Perc"=round(100*(add_forecast-actual)/actual,2),
+           "Mult-Forecast"=mult_forecast,
+           "Mult-Error-Abs"=mult_forecast-actual,
+           "Mult-Error-Perc"=round(100*(mult_forecast-actual)/actual,2))
+
+#mean(abs(Performance$Add.Error.Perc))
+#mean(abs(Performance$Mult.Error.Perc))
+
+knitr::kable(Performance)
+```
+
+
+**Utilizing ets()**
+
+A more customizable forecasting method than using the `hw()` model is the `ets()` function in the `forecast` package which allows greate specification of the mode.  
+
+The function's **model** parameter can be specified with a three character string. The first letter denotes the error type, the second letter denotes the trend type, and the third letter denotes the season type. The options you can specify for each component are below:
+
+  - error: additive (“A”), multiplicative (“M”), unknown (“Z”)
+  - trend: none (“N”), additive (“A”), multiplicative (“M”), unknown (“Z”)
+  - seasonality: none (“N”), additive (“A”), multiplicative (“M”), unknown (“Z”)
+
+For example, setting `model='AAA'` would produce a model with additive error, additive trend, and additive seasonality. By default, the parameter is set to "ZZZ" which passes unknown values to each component and allows the algorithm to select the 'optimal' model by minimizing RMSE, AIC, and BIC on the training data set. See reference [here](https://www.rdocumentation.org/packages/forecast/versions/8.12/topics/ets).
+
+Running the model with the default setting returns ETS(M,Ad,M):
+
+```{r ets}
+ets_bike <- ets(train) # returns model
+ets_bike
+#autoplot(ets_bike)
+```
+
+Forecasting a year forward with this model provide a much better prediction, returning an average absolute error of just 4.6%
+
+```{r ets evaluation}
+ets_forecast <-ets_bike %>% forecast(h=12)
+autoplot(ts_month) +
+  autolayer(ets_forecast, series="ETS forecasts", PI=FALSE) +
+  scale_y_continuous(label=comma) + theme_minimal() +
+  xlab(" ") +
+  ylab("") +
+  ggtitle("ETS Forecast for Monthly Bike Rentals") +
+  guides(colour=guide_legend(title="Forecast"))
+
+ets_forecast_mean<-ets_forecast$mean
+
+ets_performance <- data.frame(Actual=actual,
+           "ETS-Forecast"=ets_forecast_mean,
+           "ETS-Error-Abs."=ets_forecast_mean-actual,
+           "ETS-Error-Perc"=round(100*(ets_forecast_mean-actual)/actual,2))
+
+# mean(abs(ets_performance$ETS.Error.Perc))
+
+knitr::kable(ets_performance)
+
+```
+
+
+
+

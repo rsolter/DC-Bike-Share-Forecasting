@@ -1,5 +1,7 @@
 ---
-output: rmarkdown::github_document
+output: 
+  md_document:
+    variant: markdown_github
 ---
 
 ### Monthly DC BikeShare Ridership
@@ -41,7 +43,7 @@ The original data was gathered from the official DC Bike Share [site](https://s3
 
 
 
-```{r Plots}
+```{r, Plots}
 autoplot(ts_month) +
   xlab("Year") + ylab("Total Rides") + scale_y_continuous(label=comma) +
   ggtitle("Monthly bike rentals")

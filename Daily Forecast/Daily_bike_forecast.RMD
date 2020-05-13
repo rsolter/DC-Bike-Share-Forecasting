@@ -1,5 +1,7 @@
 ---
-output: html_document
+output: 
+  md_document:
+    variant: markdown_github
 ---
 
 ```{r setup, include=FALSE}
@@ -34,13 +36,13 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
 
 ### Predicting Daily DC Bike Share Ridership with **prophet**
 
-This markdown documents multiple attempts to forecast daily ridership of the DC Bike Share program using Facebook's forecasting package [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api). Data was gathered from the official DC Bike Share [site](https://s3.amazonaws.com/capitalbikeshare-data/index.html) and spans daily bike trips logged from Sept 15th, 2010 to Sept 30th, 2018.  
+This second post is an extension of the [Forecasting Monthly Usage of Capital Bikeshare](https://rsolter.github.io/r/forecasting/Monthly_Bike_Forecast/) post in which I forecast daily usage of the Bikeshare program using using Facebook's forecasting package [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api). The dataset is the same, just not aggregated to the monthly level. 
 
 
 
 ****
 
-### Visualization 
+#### Visual Exploration 
 
 
 A few takeaways:
@@ -52,7 +54,7 @@ A few takeaways:
 
 - Given that the size of the seasonal fluctuations grow over time, a multiplicative model may be best for modeling this series. 
 
-- Similarly, over time the trend appears to frow less and less, indicating a model incorporating a logistic trend may be most appropriate. Ostensibly, this growth is down to the [expansion](https://en.wikipedia.org/wiki/Capital_Bikeshare#Expansion) in the number of bike stations and bikes over the last ~10 years. 
+- Similarly, over time the trend appears to grow less and less, indicating a model incorporating a logistic trend may be most appropriate. Ostensibly, this growth is down to the [expansion](https://en.wikipedia.org/wiki/Capital_Bikeshare#Expansion) in the number of bike stations and bikes over the last ~10 years. 
 
 
 ```{r viz}
@@ -60,7 +62,7 @@ A few takeaways:
 ggplot(bike_trips, aes(x=Date, y=n)) + 
   geom_line() + 
   theme_minimal() + 
-  ggtitle("Daily Ridership") + 
+  ggtitle("Daily Ridership Over Time") + 
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("") + ylab("") +
   scale_y_continuous(label=comma) +
@@ -68,10 +70,10 @@ ggplot(bike_trips, aes(x=Date, y=n)) +
 
 
 # Histogram of Daily Ride Totals
-ride_hist <- ggplot(bike_trips, aes(x=n)) + 
+ggplot(bike_trips, aes(x=n)) + 
   geom_histogram(binwidth = 150) +
   theme_minimal() +
-  ggtitle("Daily Counts of DC Bike Share Rides") + 
+  ggtitle("Histogram of Daily Counts of DC Bike Share Rides") + 
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("") + ylab("") +
   scale_x_continuous(label=comma)
@@ -82,7 +84,7 @@ ride_hist <- ggplot(bike_trips, aes(x=n)) +
 
 ****
 
-### Removing Outliers
+#### Removing Outliers
 
 Since there appear to be multiple outliers in the dataset and the prophet package can handle missing data points, we'll remove some outliers before proceeding to modeling the data.
 
@@ -96,13 +98,13 @@ One way to identify outliers is to use [moving-median decomposition](https://ano
 ### Using moving median
 # https://anomaly.io/anomaly-detection-moving-median-decomposition/
   
-trend <- runmed(bike_trips$n,14) # calcluating running median trend over a period of 7 obs
+trend <- runmed(bike_trips$n,15) # calcluating running median trend over a period of 15 obs
 #plot(as.ts(trend)) 
 
 
 # Decomposing 
 detrend <- bike_trips$n/as.vector(trend) # subtracting median trend from the original obs
-m <- t(matrix(data = detrend, nrow = 14)) # 
+m <- t(matrix(data = detrend, nrow = 15)) # 
 seasonal <- colMeans(m, na.rm = T)
 random <- bike_trips$n/(trend * seasonal)
 rm_random <- runmed(random[!is.na(random)], 3)
@@ -110,7 +112,7 @@ rm_random <- runmed(random[!is.na(random)], 3)
 # Using the normal distribution to detect outliers in the noise
 min <- mean(rm_random, na.rm = T) - 4*sd(rm_random, na.rm = T)
 max <- mean(rm_random, na.rm = T) + 4*sd(rm_random, na.rm = T)
-plot(as.ts(random), main="Observations falling outside 4 SD")
+plot(as.ts(random), main="Observations falling outside four Standard Deviations")
 abline(h=max, col="#e15f3f", lwd=2)
 abline(h=min, col="#e15f3f", lwd=2)
 
@@ -168,9 +170,10 @@ test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
 
 ```
 
-****
 
-First Prophet Prediction
+
+#### First Prophet Prediction 
+
 
 ```{r Prophet Forecast 1, echo=TRUE, message=F, warning=F}
 # https://facebook.github.io/prophet/docs/quick_start.html#r-api
@@ -201,9 +204,12 @@ First Prophet Prediction
 ```
 
 
-Using a dynamic visualiztion, we can zoom in on the series daily observations and see how much volatility exists on a day-to-day basis. We also can see locate extremely large observations during the second week of April in 2014 and 2015.
 
-```{r Dynamic Viz 1}
+
+```{r Dynamic Viz 1, eval=F}
+
+#Using a dynamic visualiztion, we can zoom in on the series daily observations and see how much volatility exists on a day-to-day basis. We also can see locate extremely large observations during the second week of April in 2014 and 2015.
+
   # Dynamic Plot of forecast
   dyplot.prophet(prophetFit1, prophetForecast1)  
 
@@ -233,11 +239,11 @@ Evaluation of the first prediction:
 
 ****
 
-### Second Prophet model
+#### Second Prophet Model - Logistic Growth + Carrying Capacity
 
 
 
-Given that the overal trend appears to be leveling off, we'll try a second modeling approach with a logistic growth specified and a carrying capacity.
+Given that the overall trend appears to be leveling off, we'll try a second modeling approach with a logistic growth specified and a carrying capacity.
 
 A _carry capacity_ refers to the maxium possible value for the series. In this case, we'll set it at 17500
 
@@ -275,7 +281,7 @@ A _carry capacity_ refers to the maxium possible value for the series. In this c
   plot(prophetFit1, prophetForecast1)
   
   # Dynamic Plot of forecast
-  dyplot.prophet(prophetFit1, prophetForecast1)  
+  #dyplot.prophet(prophetFit1, prophetForecast1)  
     
 ```
 
@@ -303,7 +309,7 @@ Evaluation of the second prediction:
 
 
 
-****
+
 
 ```{r Prophet Forecast 2 Log, eval=F}
 
@@ -357,8 +363,6 @@ Evaluation of the second prediction:
 
 
 ```
-
-****
 
 
 ```{r Prophet Forecast 3 Tuning Parameters, eval=F}
@@ -435,11 +439,12 @@ Evaluation of the second prediction:
 
 ***
 
-### Next Steps
+#### Next Steps
 
 - Make use of prophet's holiday feature which allows for certain observations to be marked as influential in establishing change points in the trend.
 
 - Tuning the parameters related to the flexibility that we want to give the model to fit change points, seasonality and holidays. 
+
 
 
 
