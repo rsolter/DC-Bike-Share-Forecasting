@@ -18,6 +18,7 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
   library(scales)
   library(forecast)
   library(tseries)
+  library(TSstudio)
 
 
 # Loading cleaned bike data from Oct, 2010 - Aug, 2018 
@@ -39,47 +40,63 @@ ts_month <- ts(monthly_bike_trips$Monthly_Trips,
 ```
 
 
-The original data was gathered from the official DC Bike Share [site](https://s3.amazonaws.com/capitalbikeshare-data/index.html), spans bike trips logged from October, 2010 to August, 2018. For this markdown, the daily ridership data has been aggregated up to a monthly level.
+
+In this post, I’ll be modeling monthly ridership in the DC BikeShare program using ARIMA modeling. The original data was gathered from the official DC Bike Share [site](https://s3.amazonaws.com/capitalbikeshare-data/index.html), spans bike trips logged from October, 2010 to August, 2018. For this markdown, the daily ridership data has been aggregated up to a monthly level.
+
+
+From the initial plot, we can tell the data has clear seasonality with many fewer riders in the winter months. At the same time, we see an overall growing trend that appears logarithmic.
 
 
 
 ```{r, Plots}
 autoplot(ts_month) +
   xlab("Year") + ylab("Total Rides") + scale_y_continuous(label=comma) +
-  ggtitle("Monthly bike rentals")
+  ggtitle("Monthly bike rentals") + theme_minimal() + xlab("") +
+  theme(plot.title = element_text(hjust = 0.5))
 
 ```
 
+#### Partition
+
+```{r partition}
+ts_month
+ts_month_partition <- TSstudio::ts_split(ts_month,sample.out = 12)
+train <- ts_month_partition$train
+test <- ts_month_partition$test
+```
+
+
 #### Decomposition
 
-A decomposition of the monthly data using a multiplicative seasonal component since the seasonal fluctuations tend to grow over time:
+The first step in building an ARIMA model is decomposing the series into its three components: seasonal, trend, and remainder. It appears that the magnitude of the seasonal fluctuations are not stable and appear to grow over time:
+
+
 
 ```{r, echo=T}
-decompose(ts_month, type="multiplicative") %>% autoplot() + 
+decompose(train, type="multiplicative") %>% autoplot() + 
   xlab("Year") +
   ggtitle("Classical multiplicative decomposition
-    of monthly bike rentals")
+    of monthly bike rentals") + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) + xlab("")
 
 ```
 
 #### Stationarity
 
-A requirement of ARIMA modeling is **stationarity** of the series which is achieved by having _time invariant_ mean, variance, and co-variance of the series. Stationarity is tested formally using the augmented Dickey-Fuller test. 
+A requirement of ARIMA modeling is stationarity of the series which is achieved by having _time invariant_ mean, variance, and co-variance of the series. Stationarity is tested formally using the augmented Dickey-Fuller test. 
 
 To accomplish this, the first step is to remove the seasonal trend from the original series.
 
 ```{r Removing Seasonality, echo=F}
 
-decomp_mult <- decompose(ts_month)
+decomp_mult <- decompose(train)
 deseasonal_cnt <- seasadj(decomp_mult) 
 
 deseasonal_cnt %>%
   autoplot() + 
   xlab("Year") + scale_y_continuous(label=comma) +
-  ggtitle("Monthly bike rentals with annual seasonality Removed")
-
-
-
+  ggtitle("Monthly bike rentals with annual seasonality Removed") + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) + xlab("")
 
 ```
 
@@ -97,7 +114,7 @@ Examining the ACF and PACF plots indicate that differencing the series by 1 (_d_
 
 ```{r ACF and PACF plots}
 
-acf(deseasonal_cnt) 
+acf(deseasonal_cnt)
 
 pacf(deseasonal_cnt)
 
@@ -119,7 +136,8 @@ From the plot, it appears that the differenced, deseasoned data has a stationary
 ```{r Searching for Stationarity: Differencing Plot}
 autoplot(deseasoned_count_d1) +
   xlab("Year") + scale_y_continuous(label=comma) +
-  ggtitle("Differenced, de-seasoned Bike rentals time series")
+  ggtitle("Differenced, de-seasoned Bike rentals time series") + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
 
 ```
 
@@ -127,56 +145,43 @@ autoplot(deseasoned_count_d1) +
 
 Running ACF, PACF plots of the differeced data to see what values for _q_, _p_ would be for an ARIMA model:
 
+The ACF plot shows significant auto-correlations at lags 1,6,10,12 (_q_)
 ```{r Differenced ACF}
-
 acf(deseasoned_count_d1, main='ACF for Differenced Series')
-
 ```
 
-The ACF plot shows significant auto-correlations at lags 1,2,8,9,11 (_q_)
 
+The PACF plot shows significant partial-correlations at 5,6, and 9 (_p_)
 ```{r Differenced PACF}
-
 pacf(deseasoned_count_d1, main='PACF for Differenced Series')
-
 ```
 
-The PACF plot shows significant partial-correlations at 1,2, and beyond (_p_)
 
 
-#### ARIMA
 
-Using the findings from the ACF, PACF plots above, an ARIMA(2,1,9) model is chosen. 
+#### Modeling
+
+Using the findings from the ACF, PACF plots above, an ARIMA(2,1,9) model is chosen. Evaluating the diagnostic plots for the (2,1,9) residuals return a seemingly random residual plot and no significant autocorrelations. 
 
 ```{r Fit }
-
-fit2 <- arima(deseasoned_count_d1, order=c(2,1,9))
-fit2 
-
-
+fit <- arima(deseasoned_count_d1, order=c(2,1,9))
+fit 
 ```
 
 
-Evaluating the diagnostic plots for the (2,1,9) residuals return a seemingly random residual plot and no significant autocorrelations. There does appear to be some  
-
 ```{r Fit Evaluation}
-tsdisplay(residuals(fit2), lag.max=15, main='(2,1,9) Model Residuals')
+tsdisplay(residuals(fit), lag.max=15, main='(2,1,9) Model Residuals')
 ```
 
 
 _auto.arima()_
-
+ 
 Comparing the ARIMA(2,1,9) to the results from auto.arima we can see the automated function does not account for the autocorrelation at q(9). Furthermore, the AIC is slightyl smaller in the ARIMA(2,1,9) model.
 
 ```{r Auto-Arima, echo=T}
-
 auto.arima(deseasoned_count_d1)
-
-fit <- auto.arima(deseasoned_count_d1,seasonal=FALSE) 
-
-tsdisplay(residuals(fit), lag.max=45, main='(2,0,2) Model Residuals')
-
-
+fit2 <- auto.arima(deseasoned_count_d1,seasonal=FALSE) 
+tsdisplay(residuals(fit2), lag.max=45, main='(2,0,2) Model Residuals')
 ```
 
 
@@ -202,7 +207,8 @@ hold <- window(deseasonal_cnt, start = c(2017, 9), end = c(2018,8))
 fcast_no_holdout %>% autoplot() +
   xlab("Year") + ylab("") + scale_y_continuous(label=comma) +
   ggtitle("Prediction ARIMA (2,0,9)") +
-  autolayer(hold, series="Actual",size=2)
+  autolayer(hold, series="Actual",size=2) + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
 
 # https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
 
