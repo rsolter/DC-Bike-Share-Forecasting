@@ -1,5 +1,5 @@
 ---
-output: 
+output:
   md_document:
     variant: markdown_github
 ---
@@ -18,12 +18,12 @@ knitr::opts_chunk$set(echo = FALSE)
 
 
 
-# Loading cleaned bike data from Oct, 2010 - Aug, 2018 
+# Loading cleaned bike data from Oct, 2010 - Aug, 2018
   # source: (https://s3.amazonaws.com/capitalbikeshare-data/index.html)
 
 load(file="/home/ravisolter/Personal Git/DC-Bike-Share-Forecasting/bike_trips.rdata")
 monthly_bike_trips <- bike_trips %>% filter(Date>="2010-10-01") %>% filter(Date<"2018-09-01")
-  
+
 monthly_bike_trips <- monthly_bike_trips %>%
     mutate(Year=lubridate::year(Date),
            Month=lubridate::month(Date)) %>%
@@ -31,40 +31,85 @@ monthly_bike_trips <- monthly_bike_trips %>%
     summarise(Monthly_Trips=sum(n,na.rm=T))
 
 ts_month <- ts(monthly_bike_trips$Monthly_Trips,
-                  start=c(2010,10), end=c(2018,8), 
+                  start=c(2010,10), end=c(2018,8),
                   frequency = 12)
-  
+
+
+## Partitioning the data
+ts_month
+ts_month_partition <- TSstudio::ts_split(ts_month,sample.out = 12)
+train <- ts_month_partition$train
+test <- ts_month_partition$test
+
+
+
 ```
 
 
-One of the fundamental methods for forecasting univariate series is [exponential smoothing](https://en.wikipedia.org/wiki/Exponential_smoothing). The basic idea behind the method is that forecasts are produced using a weighted average of past observations. Furthermore, the weights applied to the past observations decay exponentially as the observations get older, with more recent observations receiving greater weight. This post will examine applying this method to predict monthly ridership on the Capital BikeShare program.
+I've always love biking. At age 18, I rode my bike 140 miles with a few friends one summer to Chicago, sleeping outside along the way. At age 29, I took a much less advised trip from DC to NYC on Dec, 28th trying to make it to Brooklyn in 3 days for a NYE party. It was below freezing when I began, and I only ended up making to to Baltimore before turning tail and taking a train back to DC. My passion for biking is one reason I decided to hunt down some DC bike share data for a post about forecasting. Also, working with bike share data, is a [very](https://towardsdatascience.com/predicting-no-of-bike-share-users-machine-learning-data-visualization-project-using-r-71bc1b9a7495) [popular](https://medium.com/@limavallantin/analysing-bike-sharing-trends-with-python-a9f574c596b9) [choice](https://nycdatascience.com/blog/student-works/r-visualization/graphic-look-bay-area-bike-share/) for data science projects.
+
+****
+
+Exponential smoothing is one of the fundamental methods for forecasting univariate series. The basic idea behind the method is that forecasts are produced using a weighted average of past observations. This post will examine applying exponential smoothing to forecast monthly ridership on the Capital BikeShare program.
+
+
+For a simple time series, represented by ${\{{x_t}}\}$, beginning at $t=0$, and the forecast of the next value in our sequence represented as $\hat{x}_{t+1}$, the simplest form of exponential smoothing takes the form:
+
+
+$$\hat{x}_{t+1} = \alpha x_t + \alpha(1-\alpha)x_{t-1} + \alpha(1-\alpha)^2x_{t-2} .. $$
+
+
+In the equation above, the rate at which the weights decrease is determined by the $\alpha$, or the **smoothing factor** which is bound by $0<\alpha<1$. If $\alpha$ is closer to 0, more weight is given to observations from the more distant past, while a value of $\alpha$ that is closer to 1 will give more more weight to recent observations.
+
+This idea can be expanded to different components of a time series, with each component having its own smoothing factors. The standard way of breaking apart the series is into three components: the level $l_t$, trend $b_t$, and seasonal $s_t$ components. This model is known as the **Holt-Winter's multiplicative method** and each smoothing factor is estimated on the basis of minimizing the sum of the square residuals (SSE).
+
+**The overall model**:
+Where _h_ denotes the number of periods forecast into the future (horizon), _m_ denotes the frequency of the seasonality (m=12 for monthly data), and k represents the integer part of _(h-1)/m_ which ensures that the estimate of the seasonal indices used for forecasting come from the final year of the sample. Read more about the Holt-Winters methodology [here](https://otexts.com/fpp2/holt-winters.html).
+
+
+$$\hat{y}_{t+h|t} = (l_{t}+hb_{t})s_{t+h-m(k+1)}$$
+
+
+**Level** component, with $alpha$ as the smoothing parameter bound between 0 and 1.
+
+$$ l_{t} = \alpha \frac{y_{t}}{s_{t-m}}+(1-\alpha)(l_{t-1}+b_{t-1}) $$
+
+
+**Trend** component, with $\beta$ as the smoothing parameter bound between 0 and 1.
+
+$$ b_{t} = \beta(l_{t}-l_{t-1})+(1-\beta)b_{t-1} $$
+
+**Season** component, with $\gamma$ as the smoothing parameter bound between 0 and 1.
+
+$$ s_{t} = \gamma \frac{y_{t}}{l_{t-1}+b_{t-1}}+(1-\gamma)s_{t-m} $$
 
 
 
-**Partition**
+**Applying Holt-Winters to BikeShare data**
 
-To test the accuracy of the predictions, we will split the data stored in `ts_month` using the `TSstudio` package into `test` and `train` objects. The test period is set to be the final 12 observations, or one year.
+As can be seen below, the bike data demonstrates clear seasonality and a growing trend in overall ridership, so our exponential smoothing model will need to account for both. Furthermore, the size of the seasonal swings in ridership have grown over time, meaning our method will need to account for that as well. Note that the chart below does not include the final 12 observations in the dataset which have been set aside for testing model accuracy.
 
 
-```{r partition, echo=TRUE}
-ts_month
+
+```{r partition, echo=FALSE}
 ts_month_partition <- TSstudio::ts_split(ts_month,sample.out = 12)
 train <- ts_month_partition$train
 test <- ts_month_partition$test
 ```
 
-**Holt-Winters Modeling**
+
 
 ```{r viz}
-autoplot(ts_month) +
+autoplot(train) +
   xlab(" ") + ylab("") + scale_y_continuous(label=comma) +
-  ggtitle("Monthly Bike Rentals") + theme_minimal() + 
+  ggtitle("Monthly Bike Rentals") + theme_minimal() +
+  labs(caption = "Last 12 months removed from chart for model validation") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
-Given both the clear seasonality and growing trend in the series, we'll use the Holt-Winters method (sometimes known as the Triple Exponential Smoothing) which will capture both factors. Specifically, the Holt-Winters uses three separate smoothing factors to compose the forecast; one for the level (alpha), another for trend (beta), and a final for the seasonal component (gamma). 
 
-Furthermore, given that the size of the seasonal swings in ridership are not constant and have grown from ~100k in 2012 to over +200k in 2017 and 2018, it makes sense to try a multiplicative method as well as additive. Read more about the methodology [here](https://otexts.com/fpp2/holt-winters.html).
+Given that the size of the seasonal fluctuations are not constant over time, the data is likely better fit with a multiplicative method, however an additive model will be run for comparison:
+
 
 ```{r holt-winters, echo=TRUE}
 add_fit <- hw(train,seasonal="additive",h = 12)
@@ -75,15 +120,26 @@ autoplot(ts_month) +
     PI=FALSE) +
   scale_y_continuous(label=comma) + theme_minimal() +
   xlab(" ") +
-  ylab("") +
-  ggtitle("Holt-Winters Forecasts for Monthly Bike Rentals") +
+  ylab("Monthly Bike Rentals") +
+  ggtitle("Holt-Winters Additive and Multiplicative Methods") +
   guides(colour=guide_legend(title="Forecast")) +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(legend.position = "bottom")
+
 ```
 
-It certainly appears that the multiplicative model does a better job than the additive one in estimating the ridership, at least until the final few months of the predictive window at which point the two estimates are quite similar.
+The smoothing parameters and overall fit statistics are reported out in the model portion of the forecast:
 
-We can confirm this by looking at the errors on a monthly basis. Over the 12 months, the mean absolute percent error for the additive model is 23.9% while the multiplicative method is closer at 10.6%.
+```{r fits}
+
+add_fit$model
+
+mult_fit$model
+
+```
+
+
+It certainly appears that the multiplicative model does a better job than the additive one in estimating the ridership, at least until the final few months of the predictive window at which point the two estimates are quite similar. We can confirm this by looking at the errors on a monthly basis. Over the 12 months, the mean absolute percent error for the additive model is 18.5% while the multiplicative method is closer at 10.1%.
 
 ```{r holt-winters evaluation}
 add_forecast <- add_fit$mean
@@ -102,20 +158,47 @@ Performance <- data.frame(Actual=actual,
 #mean(abs(Performance$Mult.Error.Perc))
 
 knitr::kable(Performance)
+
 ```
+
+
+Since the multiplicative forecast appeared to over-estimate ridership in the second half of the prediction period, we can try and improve the forecast by adding a damped trend. The damped trend introduced another parameter to the trend equation that will eventually turn the trend to a flat line sometime in the future. This is a popular method and often improves the performance of the model.
+
+Tthe addition of the damped method does improve the model's performance. We can see in the plot below the red line hugs the actual ridership much more closely, and the damped multiplicative method returns a mape of 8.7% as opposed to 10.1% for the undamped, multiplicate method.
+
+
+```{r}
+damp_mult_fit <- hw(train,seasonal="multiplicative",h = 12,damped = TRUE)
+mult_fit <- hw(train,seasonal="multiplicative",h = 12)
+autoplot(ts_month) +
+  autolayer(damp_mult_fit, series="Dampled HW multiplicative forecasts", PI=FALSE) +
+  autolayer(mult_fit, series="HW multiplicative forecasts",
+    PI=FALSE) +
+  scale_y_continuous(label=comma) + theme_minimal() +
+  xlab(" ") +
+  ylab("Monthly Bike Rentals") +
+  ggtitle("Holt-Winters Additive and Multiplicative Methods") +
+  guides(colour=guide_legend(title="Forecast")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(legend.position = "bottom")
+
+summary(damp_mult_fit)
+summary(mult_fit)
+```
+
 
 
 **Utilizing ets()**
 
-A more customizable forecasting method than using the `hw()` model is the `ets()` function in the `forecast` package which allows greate specification of the mode.  
+A more general approach to exponential smoothing than Holt-Winters is to use the `ets()` function which automatically chooses an exponential smoothing model based upon all all potential combinations of parameters for error, trend, and seasonality (see more [here](https://robjhyndman.com/talks/RevolutionR/6-ETS.pdf) on slide 12). The ets framework (error, trend, seasonality) tries out multiple models and estimates the likelihood that the data gathered could be generated from those individual models. Final model is chosen based upon AIC or other fit statistics and accounts for any combination of seasonality and damping. This is a highly efficient and flexible approach that I use in my work when producing annual goals for different hotel performance metrics.
 
-The function's **model** parameter can be specified with a three character string. The first letter denotes the error type, the second letter denotes the trend type, and the third letter denotes the season type. The options you can specify for each component are below:
+The **model** parameter in the `ets()` function can be specified with a three character string. The first letter denotes the error type, the second letter denotes the trend type, and the third letter denotes the season type. The options you can specify for each component are below:
 
   - error: additive (“A”), multiplicative (“M”), unknown (“Z”)
   - trend: none (“N”), additive (“A”), multiplicative (“M”), unknown (“Z”)
   - seasonality: none (“N”), additive (“A”), multiplicative (“M”), unknown (“Z”)
 
-For example, setting `model='AAA'` would produce a model with additive error, additive trend, and additive seasonality. By default, the parameter is set to "ZZZ" which passes unknown values to each component and allows the algorithm to select the 'optimal' model by minimizing RMSE, AIC, and BIC on the training data set. See reference [here](https://www.rdocumentation.org/packages/forecast/versions/8.12/topics/ets).
+For example, setting `model='AAM'` would produce a model with additive error, additive trend, and multiplicative seasonality. By default, the parameter is set to "ZZZ" which passes unknown values to each component and allows the algorithm to select the 'optimal' model. See `ets()` reference [here](https://www.rdocumentation.org/packages/forecast/versions/8.12/topics/ets) and more on comparing to `hw()`, [here](https://robjhyndman.com/hyndsight/estimation2/).
 
 Running the model with the default setting returns ETS(M,Ad,M):
 
@@ -151,5 +234,29 @@ knitr::kable(ets_performance)
 ```
 
 
+**Checking Residuals**
+
+The last step is the plotting of the residuals for our forecasts to ensure they don't show any clear pattern. In both cases, neither model report any patterns and so we can comfortably say they account for all the available information.
+
+```{r residuals plotting}
+
+# multiplicative damped residuals
+mult_d <- residuals(damp_mult_fit)
+autoplot(mult_d) + xlab("Day") + ylab("") +
+  ggtitle("Residuals from Multiplicative Damped method")
+
+# ets residuals
+ets_res <- residuals(ets_forecast)
+autoplot(ets_res) + xlab("Day") + ylab("") +
+  ggtitle("Residuals from ETS method")
 
 
+```
+
+
+
+****
+
+References:
+
+Hyndman, R.J., & Athanasopoulos, G. (2018) Forecasting: principles and practice, 2nd edition, OTexts: Melbourne, Australia. [OTexts.com/fpp2](https://otexts.com/fpp2/)

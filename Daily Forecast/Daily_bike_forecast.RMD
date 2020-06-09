@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
   library(tidyverse)
   library(prophet)
   library(scales)
+  library(rnoaa)
 
 # Loading cleaned bike data from Sept, 2010 - Oct, 2018 
   # source: (https://s3.amazonaws.com/capitalbikeshare-data/index.html)
@@ -33,6 +34,65 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
   
 ```
 
+
+
+```{r}
+
+# Getting daily data
+# https://ropensci.org/blog/2014/03/13/rnoaa/
+# https://docs.ropensci.org/rnoaa/
+
+
+# Getting rain data type
+prcp_data <-ncdc_datatypes(datacategoryid="PRCP", limit=56,token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
+
+
+locations <- ncdc_locs(locationcategoryid = "CITY", 
+          sortfield = "name", 
+          sortorder = "desc",
+          limit = 1000,
+          token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
+
+
+locations2 <- locations$data %>% as.data.frame()
+
+locations2 %>% filter(id=="CITY:US000001")
+
+dc_out <- rnoaa::ncdc(datasetid = "PERCIP_DLY",
+            stationid = "GHCND:US1DCDC0009",
+            startdate = "2015-01-01",
+            enddate = "2015-03-01",
+            token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
+
+
+out <- ncdc(datasetid='NORMAL_DLY', stationid='GHCND:USW00014895', datatypeid='dly-tmax-normal', startdate = '2010-05-01', enddate = '2010-05-10',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
+
+
+out <- ncdc(datasetid='NORMAL_DLY', stationid='GHCND:USW00014895', datatypeid='HPCP', startdate = '2010-05-01', enddate = '2010-05-10',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
+
+```
+
+
+
+
+
+```{r}
+date_sequence <- seq.Date(from = as.Date("2010-01-01"),to = as.Date("2010-11-01"),by = "days")
+
+percip_list <- list()
+
+for(i in 1:length(date_sequence)){
+  progress <- (i/length(date_sequence))*100
+  print(progress)
+  tmp_date <- date_sequence[[i]]
+  
+  x<-cpc_prcp(date = tmp_date,us = TRUE) %>% as.data.frame()
+  x <- x %>% filter(lat==38.875,lon==282.875) 
+  percip_list[[i]] <- x$percip
+
+}
+
+```
 
 ### Predicting Daily DC Bike Share Ridership with **prophet**
 

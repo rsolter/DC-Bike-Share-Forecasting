@@ -12,3 +12,11 @@ lubridate
 scales
 forecast
 tseries
+zoo
+xts
+PerformanceAnalytics
+TTR
+quantmod
+tidyquant
+TSstudio
+ggpubr
