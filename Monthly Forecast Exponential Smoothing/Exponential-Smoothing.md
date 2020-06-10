@@ -1,3 +1,18 @@
+I’ve always love biking. At age 18, I rode my bike 140 miles with a few
+friends one summer to Chicago, sleeping outside along the way. At age
+29, I took a much less advised trip from DC to NYC on Dec, 28th trying
+to make it to Brooklyn in 3 days for a NYE party. It was below freezing
+when I began, and I only ended up making to to Baltimore before turning
+tail and taking a train back to DC. My passion for biking is one reason
+I decided to hunt down some DC bike share data for a post about
+forecasting. Also, working with bike share data, is a
+[very](https://towardsdatascience.com/predicting-no-of-bike-share-users-machine-learning-data-visualization-project-using-r-71bc1b9a7495)
+[popular](https://medium.com/@limavallantin/analysing-bike-sharing-trends-with-python-a9f574c596b9)
+[choice](https://nycdatascience.com/blog/student-works/r-visualization/graphic-look-bay-area-bike-share/)
+for data science projects.
+
+------------------------------------------------------------------------
+
 Exponential smoothing is one of the fundamental methods for forecasting
 univariate series. The basic idea behind the method is that forecasts
 are produced using a weighted average of past observations. This post
@@ -23,13 +38,15 @@ breaking apart the series is into three components: the level
 *l*<sub>*t*</sub>, trend *b*<sub>*t*</sub>, and seasonal
 *s*<sub>*t*</sub> components. This model is known as the **Holt-Winter’s
 multiplicative method** and each smoothing factor is estimated on the
-basis of minimizing the sum of the square residuals (SSE):
+basis of minimizing the sum of the square residuals (SSE).
 
-**Overall model** with *h* denoting the number of periods forecast into
-the future (horizon), *m* denoting the frequency of the seasonality
-(m=12 for monthly data), and k representing the integer part of
-*(h-1)/m* which ensures that the estimate of the seasona indices used
-for forecasting come from the final year of the sample.
+**The overall model**: Where *h* denotes the number of periods forecast
+into the future (horizon), *m* denotes the frequency of the seasonality
+(m=12 for monthly data), and k represents the integer part of *(h-1)/m*
+which ensures that the estimate of the seasonal indices used for
+forecasting come from the final year of the sample. Read more about the
+Holt-Winters methodology
+[here](https://otexts.com/fpp2/holt-winters.html).
 
 *ŷ*<sub>*t* + *h*\|*t*</sub> = (*l*<sub>*t*</sub> + *h**b*<sub>*t*</sub>)*s*<sub>*t* + *h* − *m*(*k* + 1)</sub>
 
@@ -48,9 +65,6 @@ and 1.
 
 $$ s\_{t} = \\gamma \\frac{y\_{t}}{l\_{t-1}+b\_{t-1}}+(1-\\gamma)s\_{t-m} $$
 
-Read more about the Holt-Winters methodology
-[here](https://otexts.com/fpp2/holt-winters.html).
-
 **Applying Holt-Winters to BikeShare data**
 
 As can be seen below, the bike data demonstrates clear seasonality and a
@@ -60,27 +74,6 @@ swings in ridership have grown over time, meaning our method will need
 to account for that as well. Note that the chart below does not include
 the final 12 observations in the dataset which have been set aside for
 testing model accuracy.
-
-    ##         Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct
-    ## 2010                                                                 36613
-    ## 2011  38116  48089  63855  94632 135537 143266 141105 136447 127158 123292
-    ## 2012  96590 102979 164654 173954 195637 202600 203607 214503 218572 198840
-    ## 2013 126142 111190 158838 238604 252922 257118 270919 292083 285187 257652
-    ## 2014 114006 124031 167568 272490 310151 320523 331157 324218 327597 301244
-    ## 2015 128592 109766 193107 318127 366930 314016 364015 364313 328038 290351
-    ## 2016 123252 145654 283493 285516 288720 368096 366435 357306 344246 343243
-    ## 2017 174804 226303 245403 365990 339677 398751 397680 402534 391371 384833
-    ## 2018 168590 182378 238998 328907 374115 392338 404761 403866              
-    ##         Nov    Dec
-    ## 2010  48114  28765
-    ## 2011 101949  87087
-    ## 2012 152664 123713
-    ## 2013 194621 138090
-    ## 2014 199298 153221
-    ## 2015 228296 187357
-    ## 2016 259106 168719
-    ## 2017 252534 177897
-    ## 2018
 
 ![](Exponential-Smoothing_files/figure-markdown_github/viz-1.png)
 
@@ -100,7 +93,7 @@ autoplot(ts_month) +
   ylab("Monthly Bike Rentals") +
   ggtitle("Holt-Winters Additive and Multiplicative Methods") +
   guides(colour=guide_legend(title="Forecast")) +
-  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(legend.position = "bottom")
 ```
 
@@ -154,11 +147,10 @@ the model portion of the forecast:
 It certainly appears that the multiplicative model does a better job
 than the additive one in estimating the ridership, at least until the
 final few months of the predictive window at which point the two
-estimates are quite similar.
-
-We can confirm this by looking at the errors on a monthly basis. Over
-the 12 months, the mean absolute percent error for the additive model is
-18.5% while the multiplicative method is closer at 10.1%.
+estimates are quite similar. We can confirm this by looking at the
+errors on a monthly basis. Over the 12 months, the mean absolute percent
+error for the additive model is 18.5% while the multiplicative method is
+closer at 10.1%.
 
 |  Actual|  Add.Forecast|  Add.Error.Abs|  Add.Error.Perc|  Mult.Forecast|  Mult.Error.Abs|  Mult.Error.Perc|
 |-------:|-------------:|--------------:|---------------:|--------------:|---------------:|----------------:|
@@ -182,58 +174,57 @@ parameter to the trend equation that will eventually turn the trend to a
 flat line sometime in the future. This is a popular method and often
 improves the performance of the model.
 
-Unfortunately, the addition of the damped method doesn’t appear to
-improve our model’s performance. Although the forecast appears to be
-better in the second half of the year, the damped method over-estimates
-ridership in the first half of the year and returns an overall mape of
-17.1%
+Tthe addition of the damped method does improve the model’s performance.
+We can see in the plot below the red line hugs the actual ridership much
+more closely, and the damped multiplicative method returns a mape of
+8.7% as opposed to 10.1% for the undamped, multiplicate method.
 
 ![](Exponential-Smoothing_files/figure-markdown_github/unnamed-chunk-1-1.png)
 
     ## 
-    ## Forecast method: Damped Holt-Winters' additive method
+    ## Forecast method: Damped Holt-Winters' multiplicative method
     ## 
     ## Model Information:
-    ## Damped Holt-Winters' additive method 
+    ## Damped Holt-Winters' multiplicative method 
     ## 
     ## Call:
-    ##  hw(y = train, h = 12, seasonal = "additive", damped = TRUE) 
+    ##  hw(y = train, h = 12, seasonal = "multiplicative", damped = TRUE) 
     ## 
     ##   Smoothing parameters:
-    ##     alpha = 0.6634 
-    ##     beta  = 1e-04 
-    ##     gamma = 2e-04 
-    ##     phi   = 0.98 
+    ##     alpha = 0.0272 
+    ##     beta  = 0.002 
+    ##     gamma = 1e-04 
+    ##     phi   = 0.9776 
     ## 
     ##   Initial states:
-    ##     l = 66591.7264 
-    ##     b = 6286.9906 
-    ##     s = 54227.86 66405.14 66653.16 56637.41 49788.04 25701.69
-    ##            -30898.23 -92565.77 -100297.8 -84179.48 -34696.41 23224.4
+    ##     l = 47633.9982 
+    ##     b = 7028.6844 
+    ##     s = 1.237 1.3027 1.3111 1.2693 1.2043 1.1437
+    ##            0.8453 0.5857 0.5319 0.6064 0.8373 1.1252
     ## 
-    ##   sigma:  32102.06
+    ##   sigma:  0.1328
     ## 
     ##      AIC     AICc      BIC 
-    ## 2106.269 2116.957 2149.809 
+    ## 2066.718 2077.406 2110.257 
     ## 
     ## Error measures:
-    ##                    ME     RMSE      MAE       MPE     MAPE      MASE       ACF1
-    ## Training set 322.6186 28626.34 22412.05 0.1826105 17.16446 0.5160072 0.05871017
+    ##                     ME     RMSE      MAE       MPE     MAPE      MASE      ACF1
+    ## Training set -561.8677 18943.98 14465.64 -2.061909 8.721132 0.3330519 0.0994102
     ## 
     ## Forecasts:
     ##          Point Forecast    Lo 80    Hi 80    Lo 95    Hi 95
-    ## Sep 2017       390073.5 348933.1 431214.0 327154.6 452992.4
-    ## Oct 2017       360201.8 310829.7 409574.0 284693.7 435710.0
-    ## Nov 2017       303394.8 246977.4 359812.2 217111.9 389677.8
-    ## Dec 2017       255002.9 192325.3 317680.5 159145.8 350860.0
-    ## Jan 2018       239947.4 171578.8 308316.1 135386.6 344508.3
-    ## Feb 2018       248720.2 175097.5 322342.8 136124.0 361316.3
-    ## Mar 2018       311403.3 232875.9 389930.6 191306.1 431500.5
-    ## Apr 2018       369022.8 285878.3 452167.4 241864.2 496181.5
-    ## May 2018       394077.6 306557.9 481597.3 260227.7 527927.5
-    ## Jun 2018       401904.0 310216.4 493591.5 261679.9 542128.0
-    ## Jul 2018       412855.6 317180.5 508530.7 266533.2 559178.0
-    ## Aug 2018       413533.5 314029.5 513037.5 261355.3 565711.7
+    ## Sep 2017       376781.9 312636.3 440927.6 278679.6 474884.3
+    ## Oct 2017       343962.5 285378.9 402546.2 254366.6 433558.5
+    ## Nov 2017       256855.7 213086.6 300624.7 189916.7 323794.7
+    ## Dec 2017       186662.3 154837.0 218487.7 137989.6 235335.0
+    ## Jan 2018       164281.2 136254.7 192307.7 121418.4 207144.1
+    ## Feb 2018       181494.4 150510.5 212478.3 134108.7 228880.2
+    ## Mar 2018       262761.4 217871.1 307651.7 194107.7 331415.2
+    ## Apr 2018       356605.5 295634.3 417576.8 263358.1 449853.0
+    ## May 2018       376669.7 312212.6 441126.8 278091.0 475248.4
+    ## Jun 2018       398147.3 329951.8 466342.8 293851.3 502443.3
+    ## Jul 2018       412432.6 341720.4 483144.8 304287.6 520577.5
+    ## Aug 2018       410944.7 340413.3 481476.1 303076.3 518813.2
 
     ## 
     ## Forecast method: Holt-Winters' multiplicative method
@@ -283,13 +274,16 @@ ridership in the first half of the year and returns an overall mape of
 
 A more general approach to exponential smoothing than Holt-Winters is to
 use the `ets()` function which automatically chooses an exponential
-smoothing model based upon 15 potential models (see more
+smoothing model based upon all all potential combinations of parameters
+for error, trend, and seasonality (see more
 [here](https://robjhyndman.com/talks/RevolutionR/6-ETS.pdf) on slide
-10). The ets framework (error, trend, seasonality) tries out multiple
+12). The ets framework (error, trend, seasonality) tries out multiple
 models and estimates the likelihood that the data gathered could be
 generated from those individual models. Final model is chosen based upon
 AIC or other fit statistics and accounts for any combination of
-seasonality and damping.
+seasonality and damping. This is a highly efficient and flexible
+approach that I use in my work when producing annual goals for different
+hotel performance metrics.
 
 The **model** parameter in the `ets()` function can be specified with a
 three character string. The first letter denotes the error type, the
@@ -354,6 +348,15 @@ prediction, returning an average absolute error of just 4.6%
 |  392338|      398949.3|        6611.274|            1.69|
 |  404761|      403389.4|       -1371.609|           -0.34|
 |  403866|      398558.4|       -5307.588|           -1.31|
+
+**Checking Residuals**
+
+The last step is the plotting of the residuals for our forecasts to
+ensure they don’t show any clear pattern. In both cases, neither model
+report any patterns and so we can comfortably say they account for all
+the available information.
+
+![](Exponential-Smoothing_files/figure-markdown_github/residuals%20plotting-1.png)![](Exponential-Smoothing_files/figure-markdown_github/residuals%20plotting-2.png)
 
 ------------------------------------------------------------------------
 

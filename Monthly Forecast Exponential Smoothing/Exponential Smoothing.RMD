@@ -41,8 +41,6 @@ ts_month_partition <- TSstudio::ts_split(ts_month,sample.out = 12)
 train <- ts_month_partition$train
 test <- ts_month_partition$test
 
-
-
 ```
 
 

@@ -71,12 +71,12 @@ ts_month <- ts(monthly_bike_trips$Monthly_Trips,
 
 
 
-Having used DC Capital BikeShare data [previously](https://rsolter.github.io/r/forecasting/Monthly_Bike_Forecast_ETS/) to forecast with exponential smoothing models, I wanted to do the same with ARIMA modeling. ARIMA a complementary method for forecasting univariate timeseries, but it also allows for explanatory variables in the regression. In this case, I’ve added monthly average temperatures as a regressor. The data was [downloaded](https://www.ncei.noaa.gov/access/search/data-search/global-summary-of-the-month) from NOAA and represents measurements from the Regan National Airport weather station.
+Having used DC Capital BikeShare data [previously](https://rsolter.github.io/r/forecasting/Monthly_Bike_Forecast_ETS/) to forecast with exponential smoothing models, I wanted to do the same with ARIMA modeling. ARIMA a complementary method for forecasting univariate timeseries, but it also allows for explanatory variables in the regression. In this case, I’ve added monthly average temperatures as a regressor. The [data](https://www.ncei.noaa.gov/access/search/data-search/global-summary-of-the-month) was downloaded from NOAA and represents measurements from the Regan National Airport weather station.
 
 
 ****
 
-**Stationarity**
+# Tools for Stationarity
 
 A requirement of ARIMA modeling is stationarity of the series which is achieved by having _time invariant_ mean, variance, and co-variance of the series. Any time series with a trend or seasonality is not stationary. 
   
@@ -104,26 +104,6 @@ plot(DclosingApple, main ="Differenced Closing Prices on Apple Stock")
 ```
 
 
-A second tool for handline 
-
-```{r}
-
-quantmod::getSymbols("NVDA", 
-                     from = '2016-10-01',
-                     to ='2017-06-01', 
-                     warnings=FALSE,auto.assign=TRUE)
-
-closingNVDA <- NVDA$NVDA.Close
-transformed_NVDA <- BoxCox(closingNVDA,lambda = "auto")
-
-graphics::par(mfrow=c(2,1))
-plot(closingNVDA, main ="Closing Prices on NVDA Stock")
-plot(transformed_NVDA, main ="Log Transformed Closing Prices on NVDA Stock")
-
-```
-
-
-
 However, was that enough to achieve stationarity? Formally, stationarity can be assessed by using one of many unit tests, one of which is the Kwiatkowski-Phillips-Schmidt-Shin (**KPSS**) test. The null hypothesis for the KPSS test is that the data are stationary, and we look for evidence that the null hypothesis is false. Consequently, small p-values (e.g., less than 0.05), indicate the data is not stationary and suggest differencing is required. Read more [here](https://nwfsc-timeseries.github.io/atsa-labs/sec-boxjenkins-aug-dickey-fuller.html).
 
 In the first test on the raw data, the null hypothesis of stationarity is rejected. Run a second time on differenced data, the null hypothesis is not rejected, indicating that our differencing worked!
@@ -139,6 +119,23 @@ tseries::kpss.test(DclosingApple) # p-value 0f 0.1
 
 ```
 
+
+
+Standard variance is another requirement for stationarity. Handling non-standard variance is done by transforming the time series, either with logarithmic functions or the Box-Cox transformation. To show it in action, I'll create a fake dataset whose variance grows over time:
+
+```{r heteroskedasticity}
+trend <- ts(seq(from = 10, to = 110))
+cycle <- ts(sin(trend)) * 0.2 * trend
+tseries_h <- trend + cycle
+plot.ts(tseries_h)
+```
+
+And use BoxCox.lambda() to determine the correct lambda for transforming the data to get a constant variance:
+
+```{r Box-Cox}
+lambda <- BoxCox.lambda(tseries_h)
+plot.ts(BoxCox(tseries_h, lambda = lambda))
+```
 
 
 **ARIMA Theory**
@@ -222,247 +219,55 @@ figure
 
 ```
 
-To achieve **stationarity** in our time series, we need to remove all trend and seasonality components from the data. A decomposed version of the series can be visualized using the decompose() function. Since the seasonal fluctuations appear to grow over time we feed a multiplicative argument to the (seasonal component) type parameter:
-
-```{r, echo=T}
-decompose(bike_train, type="multiplicative") %>% autoplot() + 
-  xlab("Year") +
-  ggtitle("Classical multiplicative decomposition
-    of monthly bike rentals") + theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5)) + xlab("")
-
-```
-
-Removing the seasonality alone from the time series using seasadj() does not yield a stationary timeseries:
-
-```{r Removing Seasonality, echo=T}
-
-decomp_mult <- decompose(bike_train)
-deseasonal_cnt <- seasadj(decomp_mult) 
-
-deseasonal_cnt %>%
-  autoplot() + 
-  xlab("Year") + scale_y_continuous(label=comma) +
-  ggtitle("Monthly bike rentals with annual seasonality Removed") + theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5)) + xlab("")
-
-tseries::kpss.test(deseasonal_cnt)
-```
-
-Examining the ACF and PACF plots indicate that differencing the series by 1 observation could help:
-
-```{r ACF and PACF plots}
-
-acf(deseasonal_cnt)
-
-pacf(deseasonal_cnt)
-
-```
 
 
-And running the KPSS test confirms that differencing the data does return a stationary series: 
+The function **auto.arima()** automates the process of choosing the parameters. ['The auto.arima() function in R uses a variation of the Hyndman-Khandakar algorithm, which combines unit root tests, minimisation of the AICc and MLE to obtain an ARIMA model'](https://otexts.com/fpp2/arima-r.html). 
 
-```{r Searching for Stationarity: Differencing, echo=T}
-deseasoned_count_d1 = diff(deseasonal_cnt, differences = 1)
-tseries::kpss.test(deseasoned_count_d1) 
+A seasonal ARIMA model produces a MAPE of 9.81% on the training set and a similar MAPE on the test set (9.6%)
+```{r arima1}
+arima_1 <- auto.arima(bike_train,seasonal = TRUE)
+summary(arima_1)
+fr <- forecast(arima_1,h = 12)
 
-#deseasoned_count_d2 = diff(deseasonal_cnt, differences = 2)
-#tseries::kpss.test(deseasoned_count_d2) 
-
-
-```
+#mean((fr$mean-bike_test)/fr$mean)
 
 
-From the plot, it appears that the differenced, deseasoned data has a stationary mean: 
-
-```{r Searching for Stationarity: Differencing Plot}
-autoplot(deseasoned_count_d1) +
-  xlab("Year") + scale_y_continuous(label=comma) +
-  ggtitle("Differenced, de-seasoned Bike rentals time series") + theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5))
-
-```
-
-****
-
-Running ACF, PACF plots of the differeced data to see what values for _q_, _p_ would be for an ARIMA model:
-
-The ACF plot shows significant auto-correlations at lags 1,6,10,12 (_q_)
-```{r Differenced ACF}
-acf(deseasoned_count_d1, main='ACF for Differenced Series')
-```
+autoplot(fr) +
+  autolayer(bike_test, series="Actual", PI=FALSE) +
+  scale_y_continuous(label=comma) + theme_minimal() +
+  xlab(" ") +
+  ylab("") +
+  ggtitle("Forecasts from ARIMA(0,1,4)(0,1,0)[12]") +
+  guides(colour=guide_legend(title="Forecast")) +
+  theme(legend.position = "bottom")
 
 
-The PACF plot shows significant partial-correlations at 5,6, and 9 (_p_)
-```{r Differenced PACF}
-pacf(deseasoned_count_d1, main='PACF for Differenced Series')
-```
-
-
-
-
-#### Modeling
-
-Using the findings from the ACF, PACF plots above, an ARIMA(2,1,9) model is chosen. Evaluating the diagnostic plots for the (2,1,9) residuals return a seemingly random residual plot and no significant autocorrelations. 
-
-```{r Fit }
-fit <- arima(deseasoned_count_d1, order=c(2,1,9))
-fit 
-```
-
-
-```{r Fit Evaluation}
-tsdisplay(residuals(fit), lag.max=15, main='(2,1,9) Model Residuals')
-```
-
-
-_auto.arima()_
- 
-Comparing the ARIMA(2,1,9) to the results from auto.arima we can see the automated function does not account for the autocorrelation at q(9). Furthermore, the AIC is slightyl smaller in the ARIMA(2,1,9) model.
-
-```{r Auto-Arima, echo=T}
-auto.arima(deseasoned_count_d1)
-fit2 <- auto.arima(deseasoned_count_d1,seasonal=FALSE) 
-tsdisplay(residuals(fit2), lag.max=45, main='(2,0,2) Model Residuals')
-```
-
-
-
-#### Forecasting and Back-Testing
-
-To fully evaluate the model's predictive power, we set aside the last 12 months of the _deseasonal_cnt_ object and compare our predictions to what was actually observed.
-
-```{r Partition and Forecast, echo=F, eval=F}
-
-#hold <- deseasonal_cnt[84:95]
-
-train <- deseasonal_cnt[1:83]
-train <- ts(train, start=2011, frequency=12)
-
-fit_no_holdout <- arima(ts(train, start=c(2010,10), frequency=12), order=c(2,0,9))
-
-fcast_no_holdout <- forecast(fit_no_holdout, h = 12)
-
-# Plot 1
-hold <- window(deseasonal_cnt, start = c(2017, 9), end = c(2018,8))
-
-fcast_no_holdout %>% autoplot() +
-  xlab("Year") + ylab("") + scale_y_continuous(label=comma) +
-  ggtitle("Prediction ARIMA (2,0,9)") +
-  autolayer(hold, series="Actual",size=2) + theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5))
-
-# https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
-
+# tsdisplay(residuals(arima_1), lag.max=15, main='auto.arima() Model Residuals')
 
 ```
 
 
 
+Second attempt at auto.arima() with NOAA data used as a regressor, results in slightly worse performance. The training MAPE is 11.9% and the test MAPE is 10.6%. Why might this be? It could be that the temperature isn't actually a good predictor of ridership, at least at a monthly level. Referring to the charts above, it's clear that the temperature data reflects the seasonality in the data, but that's also built into our auto.arima() function with the seasonal="TRUE" argument and m=12 parameter, so perhaps avg. monthly temperature is unecessary for building our model.
 
-****
+```{r arima2}
+arima_2 <- auto.arima(bike_train,seasonal = TRUE,xreg = noaa_train)
+summary(arima_2)
+fr2 <- forecast(arima_2,h = 12,xreg = noaa_test)
 
-Comparing both datasets, we see similar behavior. Both datasets are clearly seasonal while the bike dataset does report a clear growth trend through 2016 before slowing in the following years.
+#mean((fr2$mean-bike_test)/fr2$mean)
+#tsdisplay(residuals(arima_2), lag.max=15, main='auto.arima() + NOAA Regressors Model Residuals')
 
-```{r period over period % growth, eval=F}
-
-lagged_bike <- ts_month %>% as.numeric() %>% lag(1)
-bike <- ts_month %>% as.numeric()
-bike_mo_perc_growth <- bike/lagged_bike
-
-lagged_temp <- noaa_ts %>% as.numeric() %>% lag(1)
-temp <- noaa_ts %>% as.numeric()
-temp_mo_perc_growth <- temp/lagged_temp
-
-comp_DF <- data.frame("period" = seq.Date(from=as.Date("2010/10/01"),to = as.Date("2018/08/01"),by = "month"),
-           temp=temp_mo_perc_growth,
-           bike=bike_mo_perc_growth)
-
-comp_DF_long <- comp_DF %>% gather(key,value,2:3)
-
-ggplot(comp_DF_long,aes(x=period,y=value, colour=key)) + 
-  geom_point() + geom_line() + 
-  theme_minimal() +
-  xlab("") + ylab("% Change") + scale_y_continuous(label=percent) +
-  ggtitle("Month by Month % Change") + theme_minimal() + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
-  theme(legend.title = element_blank(), legend.position="bottom")
-  
+autoplot(fr2) +
+  autolayer(bike_test, series="Actual", PI=FALSE) +
+  scale_y_continuous(label=comma) + theme_minimal() +
+  xlab(" ") +
+  ylab("") +
+  ggtitle("Forecasts from ARIMA(0,1,2)(1,0,0)[12] and NOAA temperature regressor") +
+  guides(colour=guide_legend(title="Forecast")) +
+  theme(legend.position = "bottom")
 
 ```
 
 
-Will give auto.arima a shot, using default parameters. Returns a MAPE of 11.8%
-
-```{r auto-arima with NOAA data}
-# Fitting model
-fit_basic1<- auto.arima(bike_train,xreg=noaa_train)
-
-# Model summary, fit statistics
-summary(fit_basic1)
-
-# Forecasting forward
-forecast_1<-forecast(fit_basic1,xreg = noaa_test)
-
-# plotting forecasted vs actual
-autoplot(bike_train,main = 'Forecast For DC Bikeshare Ridership - Temp Regressor',xlab = 'Year - Month',ylab = 'Bike Ridership')+
-  autolayer(forecast_1, "Forecasted Ridership")+
-  autolayer(bike_test,series = 'Actual Ridership')
-
-```
-
-
-Residual inspection:
-
-```{r inspecting residuals}
-checkresiduals(fit_basic1)
-
-```
-
-Auto.arima without a regressor
-
-```{r}
-# Fitting model
-fit_noreg<- auto.arima(bike_train)
-
-# Model summary, fit statistics
-summary(fit_noreg)
-
-# Forecasting forward
-forecast_0<-forecast(fit_noreg,h = 12)
-
-# plotting forecasted vs actual
-autoplot(bike_train,main = 'Forecast For DC Bikeshare Ridership - No Regressor',xlab = 'Year - Month',ylab = 'Bike Ridership')+
-  autolayer(forecast_0, "Forecasted Ridership")+
-  autolayer(bike_test,series = 'Actual Ridership')
-```
-
-
-
-Residual inspection:
-
-```{r inspecting residuals2}
-checkresiduals(fit_noreg)
-
-```
-
-
-```{r second auto-arima with NOAA data}
-# Fitting model
-fit_long<- auto.arima(bike_train,xreg=noaa_train,allowdrift = TRUE,allowmean = TRUE)
-
-# Model summary, fit statistics
-summary(fit_long)
-
-# Forecasting forward
-forecast_2<-forecast(fit_long,xreg = noaa_test)
-
-# plotting forecasted vs actual
-autoplot(bike_train,main = 'Forecast For DC Bikeshare Ridership - 2 ',xlab = 'Year - Month',ylab = 'Bike Ridership')+
-  autolayer(forecast_1, "Forecasted Ridership")+
-  autolayer(bike_test,series = 'Actual Ridership')
-
-summary(forecast_1)
-
-```
 
