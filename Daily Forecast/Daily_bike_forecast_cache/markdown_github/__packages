@@ -12,3 +12,5 @@ Rcpp
 rlang
 prophet
 scales
+ggthemes
+rnoaa

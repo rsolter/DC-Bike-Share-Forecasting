@@ -9,6 +9,7 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
 
 # Libraries
   library(tidyverse)
+  library(ggthemes)
   library(prophet)
   library(scales)
   library(rnoaa)
@@ -18,9 +19,58 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
   load(file="bike_trips.rdata")
   bike_trips <- bike_trips[1:2920, ] # subsetting down to exactly 8 years worth of data (365*8)
 
-  
-# Some resources:
+# Weather data
+  # Washington Reagan Airport Station ID
+  # https://www.ncdc.noaa.gov/cdo-web/datasets/NORMAL_DLY/stations/GHCND:USW00013743/detail
 
+# Percipitation
+  
+  p1 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2010-09-15', enddate = '2011-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p1 <- p1$data %>% select(date,value) %>% as.data.frame() 
+  
+  p2 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2011-09-15', enddate = '2012-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p2 <- p2$data %>% select(date,value) %>% as.data.frame() 
+  
+  p3 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2012-09-15', enddate = '2013-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p3 <- p3$data %>% select(date,value) %>% as.data.frame() 
+  
+  p4 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2013-09-15', enddate = '2014-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p4 <- p4$data %>% select(date,value) %>% as.data.frame() 
+  
+  p5 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2014-09-15', enddate = '2015-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p5 <- p5$data %>% select(date,value) %>% as.data.frame() 
+  
+  p6 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2015-09-15', enddate = '2016-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p6 <- p6$data %>% select(date,value) %>% as.data.frame() 
+  
+  p7 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2016-09-15', enddate = '2017-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p7 <- p7$data %>% select(date,value) %>% as.data.frame() 
+  
+  p8 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2017-09-15', enddate = '2018-09-14',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p8 <- p8$data %>% select(date,value) %>% as.data.frame() 
+  
+  p9 <- ncdc(datasetid='GHCND', stationid='GHCND:USW00013743', datatypeid='PRCP', startdate = '2018-09-15', enddate = '2018-09-17',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+  p9 <- p9$data %>% select(date,value) %>% as.data.frame() 
+  
+  percip <- rbind(p1,p2,p3,p4,p5,p6,p7,p8,p9)
+  percip$date <- as.Date(percip$date)
+  
+  names(percip) <- c("ds","x")
+  
+  
+# Avg. Max. Temperature
+  
+#    t1 <- ncdc(datasetid='NORMAL_DLY', stationid='GHCND:USW00013743', datatypeid='dly-tmax-normal', startdate = '2010-09-15', enddate = '2010-12-31',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu",add_units = TRUE,limit = 1000)
+#    t1 <- t1$data %>% as.data.frame() %>% select(date,value)
+
+    
+
+  
+```
+
+
+```{r resources, echo=FALSE}
+# Some resources:
   # https://robjhyndman.com/hyndsight/longseasonality/
   # https://stats.stackexchange.com/questions/185056/adjusting-daily-time-series-data-for-the-seasonal-component
   # https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
@@ -28,115 +78,61 @@ knitr::opts_chunk$set(echo = F,warning = F,message = F,cache = T, error=F, fig.w
   # https://pythondata.com/forecasting-time-series-data-with-prophet-part-2/
   # https://facebook.github.io/prophet/docs/quick_start.html#r-api
   # https://www.analyticsvidhya.com/blog/2018/05/generate-accurate-forecasts-facebook-prophet-python-r/ 
-  
-  
-  
-  
-```
-
-
-
-```{r}
-
-# Getting daily data
-# https://ropensci.org/blog/2014/03/13/rnoaa/
-# https://docs.ropensci.org/rnoaa/
-
-
-# Getting rain data type
-prcp_data <-ncdc_datatypes(datacategoryid="PRCP", limit=56,token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
-
-
-locations <- ncdc_locs(locationcategoryid = "CITY", 
-          sortfield = "name", 
-          sortorder = "desc",
-          limit = 1000,
-          token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
-
-
-locations2 <- locations$data %>% as.data.frame()
-
-locations2 %>% filter(id=="CITY:US000001")
-
-dc_out <- rnoaa::ncdc(datasetid = "PERCIP_DLY",
-            stationid = "GHCND:US1DCDC0009",
-            startdate = "2015-01-01",
-            enddate = "2015-03-01",
-            token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
-
-
-out <- ncdc(datasetid='NORMAL_DLY', stationid='GHCND:USW00014895', datatypeid='dly-tmax-normal', startdate = '2010-05-01', enddate = '2010-05-10',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
-
-
-out <- ncdc(datasetid='NORMAL_DLY', stationid='GHCND:USW00014895', datatypeid='HPCP', startdate = '2010-05-01', enddate = '2010-05-10',token = "EMHpTceEptWuQRacFtFWqiInuDCuEVnu")
-
-```
-
-
-
-
-
-```{r}
-date_sequence <- seq.Date(from = as.Date("2010-01-01"),to = as.Date("2010-11-01"),by = "days")
-
-percip_list <- list()
-
-for(i in 1:length(date_sequence)){
-  progress <- (i/length(date_sequence))*100
-  print(progress)
-  tmp_date <- date_sequence[[i]]
-  
-  x<-cpc_prcp(date = tmp_date,us = TRUE) %>% as.data.frame()
-  x <- x %>% filter(lat==38.875,lon==282.875) 
-  percip_list[[i]] <- x$percip
-
-}
-
 ```
 
 ### Predicting Daily DC Bike Share Ridership with **prophet**
 
-This second post is an extension of the [Forecasting Monthly Usage of Capital Bikeshare](https://rsolter.github.io/r/forecasting/Monthly_Bike_Forecast/) post in which I forecast daily usage of the Bikeshare program using using Facebook's forecasting package [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api). The dataset is the same, just not aggregated to the monthly level. 
+The [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api) package was created by Facebook in 2017 and provides a procedure for forecasting time series data. It's a great package that's meant to help produce reasonable forecasts with messy data without much manual effort. Prophet can handle, yearly, weekly, and daily seasonality, miultiple regressors, missing data, and can account for holidays or other dates that have a profound effect on the time series. It's also very quick, allowing the user to iterate between many different approaches. The full white paper is available [here](https://peerj.com/preprints/3190/)
 
+I've used prophet for goal-setting in a previous role, but in this post will apply it to the DC Capital BikeShare daily ridership. This post is an extension of the [Forecasting Monthly Usage of Capital Bikeshare](https://rsolter.github.io/r/forecasting/Monthly_Bike_Forecast/); its dataset is from the same source, just not aggregated to the monthly level. 
 
+To try and improve the accuracy of the ridership forecasts, daily percipitation data from NOAA will be included. The percipitation data was collected from the Reagan National Airport weather station and measures percipitation in tenths of a millimeter.
 
 ****
 
-#### Visual Exploration 
+### Visual Exploration of Daily Ridership Data
 
 
 A few takeaways:
 
+- The average number of trips taken in a given day is just under 7,500.
 
 - Unsurprisingly, the series exhibits clear seasonality, with more trips taking place during the summer months and fewer during the winter. From this plot, it's unclear if a weekly seasonality exists.
 
-- There are also a number of outliers apparent in the data. Most of these outliers are registering below the curve, and are less than expected, possibly due to bad weather on those particular days. There also appear to be a few positive outliers in the first quarter of the year and could relate to a seasonal event such as the arrival of the cherry blossoms. 
+- There are also a number of outliers apparent in the data. Most of these outliers are registering below the curve, and could possibly be due to bad weather on those particular days. There also appear to be a few positive outliers in the first quarter of the year and could relate to a seasonal event such as the arrival of the cherry blossoms. 
 
 - Given that the size of the seasonal fluctuations grow over time, a multiplicative model may be best for modeling this series. 
 
 - Similarly, over time the trend appears to grow less and less, indicating a model incorporating a logistic trend may be most appropriate. Ostensibly, this growth is down to the [expansion](https://en.wikipedia.org/wiki/Capital_Bikeshare#Expansion) in the number of bike stations and bikes over the last ~10 years. 
 
 
-```{r viz}
+
+
+```{r exploratory viz}
+
+summary(bike_trips$n)
+
 # Visualzing time series
 ggplot(bike_trips, aes(x=Date, y=n)) + 
-  geom_line() + 
-  theme_minimal() + 
+  geom_line(aes(alpha=0.75)) + 
+  theme_hc() + 
   ggtitle("Daily Ridership Over Time") + 
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("") + ylab("") +
   scale_y_continuous(label=comma) +
-  scale_x_date(breaks = "1 year",date_labels = "%Y")
+  scale_x_date(breaks = "1 year",date_labels = "%Y") + 
+  theme(legend.position = "none")
 
 
 # Histogram of Daily Ride Totals
 ggplot(bike_trips, aes(x=n)) + 
   geom_histogram(binwidth = 150) +
-  theme_minimal() +
+  theme_hc() + 
   ggtitle("Histogram of Daily Counts of DC Bike Share Rides") + 
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("") + ylab("") +
   scale_x_continuous(label=comma)
+
 ```
 
 
@@ -153,7 +149,7 @@ _Identifying and processing outliers_
 
 One way to identify outliers is to use [moving-median decomposition](https://anomaly.io/anomaly-detection-moving-median-decomposition/). In the case below, a two-week-long running median trend is subtracted from the original series. Next, observations which fall outside of 4 standard deviations of that running median trend are isolated and removed from the series for future modeling. 
 
-```{r Handing Outliers in Test Set, echo=F, message=F, warning=F}
+```{r Handing Outliers in overall dataset, echo=F, message=F, warning=F}
 
 ### Using moving median
 # https://anomaly.io/anomaly-detection-moving-median-decomposition/
@@ -193,11 +189,7 @@ real <- data.frame(id=seq(1, length(bike_trips$n)), value=bike_trips$n)
 realAnomaly <- real[anomaly$id, ]
 points(x = realAnomaly$id, y =realAnomaly$value, col="#e15f3f")
 
-```
-
-
-```{r Removing Outliers}
-
+# Removing outliers
 bike_trips_clean <- bike_trips[-realAnomaly$id, ]
 
 # This lowers the maximum values found in the series
@@ -209,16 +201,9 @@ bike_trips_clean <- bike_trips[-realAnomaly$id, ]
 ```
 
 
-
 ****
 
-### First Prophet model
-
-
-Due to the complexity inherent in daily forecasting, the modeling will be done with Facebook's semi-automated [prophet](https://facebook.github.io/prophet/docs/quick_start.html#r-api) package which can account for multiple seasonalities.
-
-
-```{r Processing and Partitioning}
+```{r Partitioning}
 
 # Change column names for propet package
 prophet_btrips <- bike_trips_clean
@@ -228,13 +213,24 @@ colnames(prophet_btrips) <- c("ds","y")
 train <- prophet_btrips %>% filter(ds<'2016-09-01') # 2173 records
 test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
 
+reg_train <- percip %>% filter(ds<'2016-09-01') # 2178 records
+reg_test <- percip %>% filter(ds>='2016-09-01') # 747 records
+
 ```
 
 
 
-#### First Prophet Prediction 
+
+### Prophet Models
+
+To test the model, the daily observations of bike rides and daily percipitation are split into training sets (2010-05-15 to 2016-08-31) and test splits (2016-09-01 to 2018-09-17). Effectively, 25% of the data is being set aside for testing.
 
 
+#### Base Model
+
+The first model is set to account for daily, weekly, and yearly seasonality. 
+
+Ultimately, the MAPE is close to 31%. From both the plot of the forecast as well as the residual distribution, we can see that the current model generally underestimates daily ridership.
 ```{r Prophet Forecast 1, echo=TRUE, message=F, warning=F}
 # https://facebook.github.io/prophet/docs/quick_start.html#r-api
 
@@ -246,136 +242,134 @@ test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
                          weekly.seasonality = T,
                          daily.seasonality = F)
   
-  # Creating dataframe for future forecast
-  future <- make_future_dataframe(prophetFit1, periods = nrow(test))
+  # Creating dataframe for future forecast, will only have date values
+  future <- make_future_dataframe(prophetFit1, periods = nrow(test),freq = 'day')
 
-  # Predicting
+  # Predicting - resulting 'prophetForecast1' dataframe contains columns for predictions, trend data, and uncertainty intervals
   prophetForecast1 <- predict(prophetFit1, future)
   
-  # The resulting prophetForecast1 dataframe contains columns for predictions, trend data, and uncertainty intervals 
-
   # Visualizing ts components - trend, weekly and yearly seasonalities
   prophet_plot_components(prophetFit1, prophetForecast1)
     
   # Visualize forecast
-  plot(prophetFit1, prophetForecast1)
+  plot(prophetFit1, prophetForecast1,ylabel = "Daily Rides",xlabel = "Date")
   
-    
-```
-
-
-
-
-```{r Dynamic Viz 1, eval=F}
-
-#Using a dynamic visualiztion, we can zoom in on the series daily observations and see how much volatility exists on a day-to-day basis. We also can see locate extremely large observations during the second week of April in 2014 and 2015.
-
   # Dynamic Plot of forecast
-  dyplot.prophet(prophetFit1, prophetForecast1)  
+  #dyplot.prophet(prophetFit1, prophetForecast1)  
 
-```
-
-
-
-Evaluation of the first prediction:
-
-```{r}
-
+   
+  
+## Prophet Foreceast 1 - Evaluation
+  
+  
   # Calculating Fit
   Fit <- test
   Fit$y_hat <- tail(prophetForecast1$yhat,nrow(test))
   Fit$resid <- Fit$y-Fit$y_hat
   Fit$resid_perc <- (Fit$resid/Fit$y)*100
+  Fit$abs_resid_perc <- abs(Fit$resid_perc)
   
-  error_summary <-summary(Fit$resid_perc)
+  error_summary <-summary(Fit$abs_resid_perc)
   
   
   # Results
   error_summary # A summary of the errors as percentages
-  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) # A plot of the error distribution
-
+  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) + ggtitle("Prophet Model 1 : Distribution of Residuals (%)") +
+    xlab("Residual Percentage") + ylab("") + theme_minimal()
+  
 ```
+
+
 
 
 ****
 
-#### Second Prophet Model - Logistic Growth + Carrying Capacity
+#### Logistic Growth Model + Carrying Capacity
+
+
+Given that the overall trend appears to be leveling off, we'll try a second modeling approach with a logistic growth specified and a carrying capacity. The _carry capacity_ refers to the maxium possible value for the series. In this case, we'll set it at 19,113 which was the maximum value of rides in the original dataset. 
+
+Unforuntately, taking both of these steps doesn't seem to have a material difference on the MAPE (32%) or the overall 
 
 
 
-Given that the overall trend appears to be leveling off, we'll try a second modeling approach with a logistic growth specified and a carrying capacity.
-
-A _carry capacity_ refers to the maxium possible value for the series. In this case, we'll set it at 17500
-
-
-
-```{r Prophet Forecast 1a, echo=TRUE, message=F, warning=F}
-# https://facebook.github.io/prophet/docs/quick_start.html#r-api
-
-## Prophet Forecast 1
+```{r Prophet Forecast 2 Log Growth + CC, echo=TRUE, message=F, warning=F}
 
   # Training 
 
-  train$cap <- 17500  
+  train$cap <- 19113  
 
-  prophetFit1 <- prophet(train,
+  prophetFit2 <- prophet(train,
                          yearly.seasonality = T,
                          weekly.seasonality = T,
                          daily.seasonality = F,
                          growth = "logistic")
   
   # Creating dataframe for future forecast
-  future <- make_future_dataframe(prophetFit1, periods = nrow(test))
-  future$cap <- 17500
+  future <- make_future_dataframe(prophetFit2, periods = nrow(test),freq = 'day')
+  future$cap <- 19113
 
   
   # Predicting
-  prophetForecast1 <- predict(prophetFit1, future)
+  prophetForecast2 <- predict(prophetFit2, future)
   
   # The resulting prophetForecast1 dataframe contains columns for predictions, trend data, and uncertainty intervals 
 
   # Visualizing ts components - trend, weekly and yearly seasonalities
-  prophet_plot_components(prophetFit1, prophetForecast1)
+  prophet_plot_components(prophetFit2, prophetForecast2)
     
   # Visualize forecast
-  plot(prophetFit1, prophetForecast1)
+  plot(prophetFit2, prophetForecast2,ylabel = "Daily Rides",xlabel = "Date")
   
   # Dynamic Plot of forecast
   #dyplot.prophet(prophetFit1, prophetForecast1)  
     
-```
-
-Evaluation of the second prediction:
-
-```{r}
+  
+# Evaluation of the second prediction:
 
   # Calculating Fit
   Fit <- test
-  Fit$y_hat <- tail(prophetForecast1$yhat,nrow(test))
+  Fit$y_hat <- tail(prophetForecast2$yhat,nrow(test))
   Fit$resid <- Fit$y-Fit$y_hat
   Fit$resid_perc <- (Fit$resid/Fit$y)*100
+  Fit$abs_resid_perc <- abs(Fit$resid_perc)
   
-  error_summary <-summary(Fit$resid_perc)
+  error_summary <-summary(Fit$abs_resid_perc)
   
   
   # Results
   error_summary # A summary of the errors as percentages
-  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) # A plot of the error distribution
-
+  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) + ggtitle("Prophet Model 2 : Distribution of Residuals (%)") +
+    xlab("Residual Percentage") + ylab("") + theme_minimal()
 ```
 
 
 
 
 
+#### Model with Logistic Transformation
 
 
+Another step we can take is transforming the data with logarithmic transformation. This is done when the time series shows heteroskedasticity, or a non-constant variance. This is evident in the way the size of the seasonal swings in ridership grow over time.
 
-```{r Prophet Forecast 2 Log, eval=F}
+Transforming the data back to compare our predictions to the test set reports a MAPE of 26%, a clear improvement! 
+
+
+```{r Prophet Forecast 3 - Log, echo=TRUE, message=F, warning=F}
 
 # 3rd Prophet prediction with Log transformation
 
-  ## The log transform results in slightly lower MAE rate
+
+
+# Paritioning
+train <- prophet_btrips %>% filter(ds<'2016-09-01') # 2173 records
+test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
+
+reg_train <- percip %>% filter(ds<'2016-09-01') # 2178 records
+reg_test <- percip %>% filter(ds>='2016-09-01') # 747 records
+
+
+  ## The log transform results in slightly lower MAPE rate
   
   # Transform 
   log_train <- train
@@ -383,10 +377,13 @@ Evaluation of the second prediction:
   
   
   # Trainging
-  m_log <- prophet(log_train)
+  m_log <- prophet(log_train,
+                   yearly.seasonality = T,
+                         weekly.seasonality = T,
+                         daily.seasonality = F)
   
   # Creating dataframe for log forecast
-  future_log <- make_future_dataframe(m_log, periods = nrow(test))
+  future_log <- make_future_dataframe(m_log, periods = nrow(test),freq = 'day')
   
   # Predicting
   forecast_log <- predict(m_log, future_log)
@@ -414,21 +411,95 @@ Evaluation of the second prediction:
   Log_Fit$resid <- Log_Fit$y-Log_Fit$y_hat
   Log_Fit$resid_perc <- (Log_Fit$resid/Log_Fit$y)*100
   
-  log_error_summary <-summary(Log_Fit$resid_perc)
+  Log_Fit$abs_resid_perc <- abs(Log_Fit$resid_perc)
+
+  
+  log_error_summary <-summary(Log_Fit$abs_resid_perc)
 
 
-  # Vizualizing Errors
-  ggplot(Log_Fit,aes(resid_perc)) + geom_histogram(binwidth = 10)
-
+  
+    # Results
+  log_error_summary # A summary of the errors as percentages
+  ggplot(Log_Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) + ggtitle("Prophet Model 3 : Distribution of Residuals (%)") +
+    xlab("Residual Percentage") + ylab("") + theme_minimal()
+  
 
 
 ```
 
 
-```{r Prophet Forecast 3 Tuning Parameters, eval=F}
 
-# 4th Prophet prediction with tuning parameters
+#### Model with Percipitation Regressor  
+
+In this attempt, we will add the daily percipitation data in as a regressor. Technically, we would want to actually use predictions of daily percipitation if we wanted to do an actual forecast, but this is just an illustrative example.
+
+Unfortunately, the addition of this data has not materially improved the accuracy of our predictions in comparison to the base model.
+
+```{r Prophet Forecast 4 - Regression, echo=TRUE, message=F, warning=F}
+
+
+
+
+# Paritioning
+train <- prophet_btrips %>% filter(ds<'2016-09-01') # 2173 records
+test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
+
+reg_train <- percip %>% filter(ds<'2016-09-01') # 2178 records
+reg_test <- percip %>% filter(ds>='2016-09-01') # 747 records
+
+
+reg_train <- left_join(train,reg_train)
+
+## Prophet Forecast 4
+
+  # Training 
+  m <- prophet()
+  add_regressor(m=m,name="percip")
   
+  m <- fit.prophet(m,reg_train)
+  
+  future_m <- make_future_dataframe(m,periods=nrow(test),freq="day")
+  
+  future_m$ds <- as.Date(future_m$ds)
+  percip$ds <- as.Date(percip$ds)
+  
+  future_ridership <- left_join(future_m,percip)
+  
+  reg_forecast <- predict(m, future_ridership)
+  
+  plot(m,reg_forecast)
+  ####
+  
+   
+  
+## Prophet Foreceast 1 - Evaluation
+  
+  
+  # Calculating Fit
+  Fit <- test
+  Fit$y_hat <- tail(reg_forecast$yhat,nrow(test))
+  Fit$resid <- Fit$y-Fit$y_hat
+  Fit$resid_perc <- (Fit$resid/Fit$y)*100
+  Fit$abs_resid_perc <- abs(Fit$resid_perc)
+  
+  error_summary <-summary(Fit$abs_resid_perc)
+  
+  
+  # Results
+  error_summary # A summary of the errors as percentages
+  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) + ggtitle("Prophet Model 4 : Distribution of Residuals (%)") +
+    xlab("Residual Percentage") + ylab("") + theme_minimal()
+
+
+```
+
+
+#### Prediction using Prophet Tuning Parameters
+
+
+
+```{r Prophet Forecast 5 - Tuning Parameters, echo=TRUE, message=F, warning=F}
+
   
   # Search grid
   prophetGrid <- expand.grid(changepoint_prior_scale = c(0.05, 0.5, 0.001),
@@ -451,17 +522,17 @@ Evaluation of the second prediction:
                  changepoint.prior.scale = parameters$changepoint_prior_scale)
                 #,holidays.prior.scale = parameters$holidays_prior_scale)
     
-    future <- make_future_dataframe(m, periods = nrow(valid))
+    future <- make_future_dataframe(m, periods = nrow(test))
     if (parameters$growth == 'logistic') {future$cap <- parameters$capacity}
     
     # NOTE: There's a problem in function names with library(caret)
     forecast <- predict(m, future)
     
-    forecast_tail <- tail(forecast,nrow(valid))
+    forecast_tail <- tail(forecast,nrow(test))
     
     #results[i] <- forecast::accuracy(forecast[forecast$ds %in% valid$ds, 'yhat'], valid$y)[ , 'MAE']
     
-    results[i] <- forecast::accuracy(forecast_tail$yhat, valid$y)[ , 'MAE']
+    results[i] <- forecast::accuracy(forecast_tail$yhat, test$y)[ , 'MAE']
     
   }
   
@@ -471,7 +542,7 @@ Evaluation of the second prediction:
 
   
   # Retrain using train and validation set
-  retrain <- bind_rows(train, valid)
+  retrain <- bind_rows(train, test)
   retrain$cap <- best_params$capacity
   m <- prophet(retrain, growth = best_params$growth,
                #holidays = holidays,
@@ -479,7 +550,7 @@ Evaluation of the second prediction:
                changepoint.prior.scale = best_params$changepoint_prior_scale)
                #,holidays.prior.scale = best_params$holidays_prior_scale)
   
-  future <- make_future_dataframe(m, periods = 184)
+  future <- make_future_dataframe(m, periods = nrow(test))
   future$cap <- best_params$capacity
   
   forecast <- predict(m, future)
@@ -490,20 +561,26 @@ Evaluation of the second prediction:
   p <- p + geom_point(data = train, aes(x = ds, y = y), size = 0.5)
   p <- p + geom_line(data = forecast, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
   p <- p + geom_ribbon(data = forecast, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.3)
-  p <- p + geom_point(data = valid, aes(x = ds, y = y), size = 0.5, color = '#4daf4a')
-  p <- p + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = 'red')
-  p  
+  p <- p + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = '#4daf4a')
+  #p <- p + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = 'red')
+  p
+  
 ```
 
 
 
 ***
 
-#### Next Steps
 
-- Make use of prophet's holiday feature which allows for certain observations to be marked as influential in establishing change points in the trend.
+### Next Steps
 
-- Tuning the parameters related to the flexibility that we want to give the model to fit change points, seasonality and holidays. 
+There are still a number of steps that could be taken to potentially improve the prediction:
+
+- Make use of prophet's holiday feature which allows for certain dates to be marked as influential in establishing change points in the trend
+
+- Engineer the percipitation data to a dummy variable based upon a certain amount of percipitation being measured
+
+- Add more regressors such as number of bike stations in use or daily temperature
 
 
 
