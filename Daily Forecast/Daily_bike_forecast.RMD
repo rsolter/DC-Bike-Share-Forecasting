@@ -126,12 +126,13 @@ ggplot(bike_trips, aes(x=Date, y=n)) +
 
 # Histogram of Daily Ride Totals
 ggplot(bike_trips, aes(x=n)) + 
-  geom_histogram(binwidth = 150) +
+  geom_histogram(binwidth = 150, aes(alpha=0.5)) +
   theme_hc() + 
   ggtitle("Histogram of Daily Counts of DC Bike Share Rides") + 
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("") + ylab("") +
-  scale_x_continuous(label=comma)
+  scale_x_continuous(label=comma) + 
+  theme(legend.position = "none")
 
 ```
 
@@ -203,7 +204,12 @@ bike_trips_clean <- bike_trips[-realAnomaly$id, ]
 
 ****
 
-```{r Partitioning}
+### Prophet Models
+
+To test the model, the daily observations of bike rides and daily percipitation are split into training sets (2010-05-15 to 2016-08-31) and test splits (2016-09-01 to 2018-09-17). Effectively, 25% of the data is being set aside for testing.
+
+
+```{r Partitioning, echo=TRUE}
 
 # Change column names for propet package
 prophet_btrips <- bike_trips_clean
@@ -217,13 +223,6 @@ reg_train <- percip %>% filter(ds<'2016-09-01') # 2178 records
 reg_test <- percip %>% filter(ds>='2016-09-01') # 747 records
 
 ```
-
-
-
-
-### Prophet Models
-
-To test the model, the daily observations of bike rides and daily percipitation are split into training sets (2010-05-15 to 2016-08-31) and test splits (2016-09-01 to 2018-09-17). Effectively, 25% of the data is being set aside for testing.
 
 
 #### Base Model
@@ -252,10 +251,22 @@ Ultimately, the MAPE is close to 31%. From both the plot of the forecast as well
   prophet_plot_components(prophetFit1, prophetForecast1)
     
   # Visualize forecast
-  plot(prophetFit1, prophetForecast1,ylabel = "Daily Rides",xlabel = "Date")
+  #plot(prophetFit1, prophetForecast1,ylabel = "Daily Rides",xlabel = "Date")
+  
+  # Plot
+  p1 <- ggplot() + theme_minimal()
+  p1 <- p1 + geom_point(data = prophetFit1$history, aes(x = as.Date(ds), y = y), size = 0.5)
+  p1 <- p1 + geom_line(data = prophetForecast1, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
+  p1 <- p1 + geom_ribbon(data = prophetForecast1, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.15)
+  p1 <- p1 + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = '#4daf4a') + scale_x_date(date_labels = "%Y")
+  p1 <- p1 + labs(title = "Propet Base Model",caption = "Test data in green") + xlab("Date") + ylab("Daily Rides")
+
+  p1
+  
+  
   
   # Dynamic Plot of forecast
-  #dyplot.prophet(prophetFit1, prophetForecast1)  
+  # dyplot.prophet(prophetFit1, prophetForecast1)  
 
    
   
@@ -319,7 +330,16 @@ Unforuntately, taking both of these steps doesn't seem to have a material differ
   prophet_plot_components(prophetFit2, prophetForecast2)
     
   # Visualize forecast
-  plot(prophetFit2, prophetForecast2,ylabel = "Daily Rides",xlabel = "Date")
+  # Plot
+  p2 <- ggplot() + theme_minimal()
+  p2 <- p2 + geom_point(data = prophetFit2$history, aes(x = as.Date(ds), y = y), size = 0.5)
+  p2 <- p2 + geom_line(data = prophetForecast2, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
+  p2 <- p2 + geom_ribbon(data = prophetForecast2, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.15)
+  p2 <- p2 + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = '#4daf4a') + scale_x_date(date_labels = "%Y")
+  p2 <- p2 + labs(title = "Propet Model: Logistic Growth + Carrying Capacity",caption = "Test data in green") + xlab("Date") + ylab("Daily Rides")
+
+  p2
+  
   
   # Dynamic Plot of forecast
   #dyplot.prophet(prophetFit1, prophetForecast1)  
@@ -389,7 +409,20 @@ reg_test <- percip %>% filter(ds>='2016-09-01') # 747 records
   forecast_log <- predict(m_log, future_log)
 
   # Visualize forecast
-  plot(m_log, forecast_log)
+  #plot(m_log, forecast_log)
+  
+  # Plot
+  p3 <- ggplot() + theme_minimal()
+  p3 <- p3 + geom_point(data = m_log$history, aes(x = as.Date(ds), y = y), size = 0.5)
+  p3 <- p3 + geom_line(data = forecast_log, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
+  p3 <- p3 + geom_ribbon(data = forecast_log, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.15)
+  #p3 <- p3 + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = '#4daf4a') + scale_x_date(date_labels = "%Y")
+  p3 <- p3 + labs(title = "Propet Model: Log Transform") + xlab("Date") + ylab("Log Transform of Daily Rides")
+
+  p3
+  
+  
+  
 
   
   # Visualizing ts components - trend, weekly and yearly seasonalities
@@ -437,9 +470,6 @@ Unfortunately, the addition of this data has not materially improved the accurac
 
 ```{r Prophet Forecast 4 - Regression, echo=TRUE, message=F, warning=F}
 
-
-
-
 # Paritioning
 train <- prophet_btrips %>% filter(ds<'2016-09-01') # 2173 records
 test <- prophet_btrips %>% filter(ds>='2016-09-01') # 747 records
@@ -454,7 +484,7 @@ reg_train <- left_join(train,reg_train)
 
   # Training 
   m <- prophet()
-  add_regressor(m=m,name="percip")
+  add_regressor(m=m,name="percip",)
   
   m <- fit.prophet(m,reg_train)
   
@@ -467,12 +497,21 @@ reg_train <- left_join(train,reg_train)
   
   reg_forecast <- predict(m, future_ridership)
   
-  plot(m,reg_forecast)
-  ####
+  #plot(m,reg_forecast)
+  
+  p4 <- ggplot() + theme_minimal()
+  p4 <- p4 + geom_point(data = m$history, aes(x = as.Date(ds), y = y), size = 0.5)
+  p4 <- p4 + geom_line(data = reg_forecast, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
+  p4 <- p4 + geom_ribbon(data = reg_forecast, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.15)
+  p4 <- p4 + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = '#4daf4a') + scale_x_date(date_labels = "%Y")
+  p4 <- p4 + labs(title = "Propet Model: Using Percipitation as a Regressor",caption = "Test data in green") + xlab("Date") + ylab("Daily Rides")
+
+  p4
+
   
    
   
-## Prophet Foreceast 1 - Evaluation
+## Prophet Foreceast 4 - Evaluation
   
   
   # Calculating Fit
@@ -554,16 +593,35 @@ reg_train <- left_join(train,reg_train)
   future$cap <- best_params$capacity
   
   forecast <- predict(m, future)
+  forecast<- forecast[1:2871,]
 
   
   # Final plot
   p <- ggplot()
-  p <- p + geom_point(data = train, aes(x = ds, y = y), size = 0.5)
+  p <- p + geom_point(data = m$history, aes(x = as.Date(ds), y = y), size = 0.5)
   p <- p + geom_line(data = forecast, aes(x = as.Date(ds), y = yhat), color = "#0072B2")
   p <- p + geom_ribbon(data = forecast, aes(x = as.Date(ds), ymin = yhat_lower, ymax = yhat_upper), fill = "#0072B2", alpha = 0.3)
   p <- p + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = '#4daf4a')
-  #p <- p + geom_point(data = test, aes(x = ds, y = y), size = 0.5, color = 'red')
-  p
+  p <- p + theme_minimal() + labs(title = "Propet Model: Tuning Parameters",caption = "Test data in green") + xlab("Date") + ylab("Daily Rides")
+  
+  
+    
+  # Calculating Fit
+  Fit <- test
+  Fit$y_hat <- tail(forecast$yhat,nrow(test))
+  Fit$resid <- Fit$y-Fit$y_hat
+  Fit$resid_perc <- (Fit$resid/Fit$y)*100
+  Fit$abs_resid_perc <- abs(Fit$resid_perc)
+  
+  error_summary <-summary(Fit$abs_resid_perc)
+  
+  
+  # Results
+  error_summary # A summary of the errors as percentages
+  ggplot(Fit,aes(resid_perc)) + geom_histogram(binwidth = 10) + ggtitle("Prophet Model 4 : Distribution of Residuals (%)") +
+    xlab("Residual Percentage") + ylab("") + theme_minimal()
+  
+  
   
 ```
 
@@ -572,7 +630,7 @@ reg_train <- left_join(train,reg_train)
 ***
 
 
-### Next Steps
+### Conclusion and Next Steps
 
 There are still a number of steps that could be taken to potentially improve the prediction:
 
